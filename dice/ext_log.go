@@ -912,7 +912,8 @@ func GetLogTxt(ctx *MsgContext, groupID string, logName string, fileNamePrefix s
 	}
 
 	for _, line := range lines {
-		timeTxt := time.Unix(line.Time, 0).Format("2006-01-02 15:04:05")
+		timeTxt := time.Unix(line.Time, 0).Format("2006-01-02 15:04:05") //这里时间信息也要改
+		//timeTxt := time.Unix(line.Time, 0)
 		text := fmt.Sprintf("%s(%v) %s\n%s\n\n", line.Nickname, line.IMUserID, timeTxt, line.Message)
 		_, _ = tempLog.WriteString(text)
 	}
