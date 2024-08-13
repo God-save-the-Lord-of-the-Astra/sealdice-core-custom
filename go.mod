@@ -55,6 +55,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.14.4
 	github.com/sealdice/botgo v0.0.0-20240102160217-e61d5bdfe083
 	github.com/sealdice/dicescript v0.0.0-20240804154241-fe03d285e730
+	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/slack-go/slack v0.13.0
 	github.com/sunshineplan/imgconv v1.1.4
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
@@ -96,7 +97,6 @@ require (
 	github.com/blevesearch/zapx/v15 v15.3.13 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
-	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elazarl/goproxy v0.0.0-20230808193330-2592e75ae04a // indirect
 	github.com/elazarl/goproxy/ext v0.0.0-20230808193330-2592e75ae04a // indirect
@@ -106,7 +106,7 @@ require (
 	github.com/getlantern/hex v0.0.0-20190417191902-c6586a6fe0b7 // indirect
 	github.com/getlantern/hidden v0.0.0-20190325191715-f02dbb02be55 // indirect
 	github.com/getlantern/ops v0.0.0-20190325191751-d70cb0d6f85f // indirect
-	github.com/go-ole/go-ole v1.2.4 // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-resty/resty/v2 v2.11.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
@@ -137,14 +137,12 @@ require (
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c // indirect
 	github.com/pdfcpu/pdfcpu v0.4.0 // indirect
-	github.com/puzpuzpuz/xsync/v3 v3.4.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.3 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/sacOO7/go-logger v0.0.0-20180719173527-9ac9add5a50d // indirect
-	github.com/smallnest/safemap v0.0.0-20240630003547-2b0c60c34511 // indirect
 	github.com/sunshineplan/pdf v1.0.3 // indirect
 	github.com/sunshineplan/tiff v0.0.0-20220128141034-29b9d69bd906 // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
@@ -156,10 +154,13 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/rtred v0.1.2 // indirect
 	github.com/tidwall/tinyqueue v0.1.1 // indirect
+	github.com/tklauser/go-sysconf v0.3.14 // indirect
+	github.com/tklauser/numcpus v0.8.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/xuri/efp v0.0.0-20231025114914-d1ff6096ae53 // indirect
 	github.com/xuri/nfp v0.0.0-20230919160717-d98342af3f05 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/mod v0.18.0 // indirect

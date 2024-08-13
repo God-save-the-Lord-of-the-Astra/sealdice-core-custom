@@ -33,6 +33,12 @@ go build
 go run .
 ```
 
+>如果这个时候发现有**依赖没有被下载**怎么办？不妨试试如下指令
+>在项目根目录下输入：
+>```bash
+>go mod tidy
+>```
+
 # SealDice 官方文档
 
 ![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)

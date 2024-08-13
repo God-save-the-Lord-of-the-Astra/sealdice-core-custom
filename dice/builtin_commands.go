@@ -3,22 +3,47 @@ package dice
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
-	"os"
-	"path"
+	"net/http"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/disk"
+	"github.com/shirou/gopsutil/mem"
+
 	"github.com/golang-module/carbon"
 	"github.com/samber/lo"
 
 	"github.com/juliangruber/go-intersect"
-	cp "github.com/otiai10/copy"
 	ds "github.com/sealdice/dicescript"
 )
+
+func Float64SliceToString(numbers []float64) string {
+	// 创建一个空字符串，用于存储结果
+	var result strings.Builder
+
+	// 遍历切片中的每个元素
+	for i, number := range numbers {
+		// 将float64转换为string
+		str := strconv.FormatFloat(number, 'f', -1, 64) // 'f' 表示float，-1 表示精度（自动选择）
+
+		// 除非它是第一个元素，否则在元素前添加逗号
+		if i > 0 {
+			result.WriteString(",")
+		}
+
+		// 将转换后的字符串添加到结果中
+		result.WriteString(str)
+	}
+
+	// 返回结果字符串
+	return result.String()
+}
 
 /** 这几条指令不能移除 */
 func (d *Dice) registerCoreCommands() {
@@ -169,13 +194,14 @@ func (d *Dice) registerCoreCommands() {
 	d.CmdMap["ban"] = cmdBlack
 
 	helpForShikiBlack := ".admin blackqq +/- <帐号> [<原因>]\n" +
-		".admin blackgroup +/- <群号> [<原因>]"
+		".admin blackgroup +/- <群号> [<原因>]\n" +
+		".admin dismiss <群号> [<原因>]"
 	cmdShikiBlack := &CmdItemInfo{
 		Name:      "admin",
 		ShortHelp: helpForShikiBlack,
 		Help:      "黑名单指令:\n" + helpForShikiBlack,
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
-			cmdArgs.ChopPrefixToArgsWith("blackqq", "blackgroup", "-", "+")
+			cmdArgs.ChopPrefixToArgsWith("blackqq", "blackgroup", "-", "+", "dismiss")
 			if ctx.PrivilegeLevel < 100 {
 				ReplyToSender(ctx, msg, "你不具备Master权限")
 				return CmdExecuteResult{Matched: true, Solved: true}
@@ -269,6 +295,54 @@ func (d *Dice) registerCoreCommands() {
 				} else {
 					return CmdExecuteResult{Matched: true, Solved: false, ShowHelp: true}
 				}
+
+			case "dismiss":
+				gid := cmdArgs.GetArgN(2)
+				if gid == "" {
+					return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+				}
+
+				n := strings.Split(gid, ":") // 不验证是否合法，反正下面会检查是否在 ServiceAtNew
+				platform := strings.Split(n[0], "-")[0]
+
+				gp, ok := ctx.Session.ServiceAtNew.Load(gid)
+				if !ok || len(n[0]) < 2 {
+					ReplyToSender(ctx, msg, fmt.Sprintf("群组列表中没有找到%s", gid))
+					return CmdExecuteResult{Matched: true, Solved: true}
+				}
+
+				if msg.Platform != platform {
+					ReplyToSender(ctx, msg, fmt.Sprintf("目标群组不在当前平台，请前往%s完成操作", platform))
+					return CmdExecuteResult{Matched: true, Solved: true}
+				}
+
+				// 既然是骰主自己操作，就不通知了
+				// 除非有多骰主……
+				ReplyToSender(ctx, msg, fmt.Sprintf("收到指令，将在5秒后退出群组%s", gp.GroupID))
+
+				txt := "注意，收到骰主指令，5秒后将从该群组退出。"
+				wherefore := cmdArgs.GetArgN(3)
+				if wherefore != "" {
+					txt += fmt.Sprintf("原因: %s", wherefore)
+				}
+
+				ReplyGroup(ctx, &Message{GroupID: gp.GroupID}, txt)
+
+				mctx := &MsgContext{
+					MessageType: "group",
+					Group:       gp,
+					EndPoint:    ctx.EndPoint,
+					Session:     ctx.Session,
+					Dice:        ctx.Dice,
+					IsPrivate:   false,
+				}
+				// SetBotOffAtGroup(mctx, gp.GroupID)
+				time.Sleep(3 * time.Second)
+				gp.DiceIDExistsMap.Delete(mctx.EndPoint.UserID)
+				gp.UpdatedAtTime = time.Now().Unix()
+				mctx.EndPoint.Adapter.QuitGroup(mctx, gp.GroupID)
+
+				return CmdExecuteResult{Matched: true, Solved: true}
 			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
@@ -276,6 +350,122 @@ func (d *Dice) registerCoreCommands() {
 		},
 	}
 	d.CmdMap["admin"] = cmdShikiBlack
+
+	//-----------------------------云黑对接-----------------------------------
+
+	helpForShikiCloudBlack := ".cloud sync //与溯洄云黑手动同步一次\n" +
+		".cloud autosync //与溯洄云黑每天自动同步一次(这是个饼)"
+
+	cmdShikiCloudBlack := &CmdItemInfo{
+		Name:      "cloud",
+		ShortHelp: helpForShikiCloudBlack,
+		Help:      "同步云黑指令:\n" + helpForShikiCloudBlack,
+		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
+			cmdArgs.ChopPrefixToArgsWith("sync", "autosync")
+			if ctx.PrivilegeLevel < 100 {
+				ReplyToSender(ctx, msg, "你不具备Master权限")
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
+
+			ctx.EndPoint.Platform = "QQ"
+
+			type blackunit struct {
+				BlackQQ      string
+				BlackGroup   string
+				WarningID    string
+				BlackComment string
+				ErasedStatus bool
+			}
+
+			type jsonElement struct {
+				Wid       int    `json:"wid"`
+				FromGroup int    `json:"fromGroup"`
+				FromQQ    int    `json:"fromQQ"`
+				Type      string `json:"type"`
+				Note      string `json:"note"`
+				IsErased  int    `json:"isErased"`
+			}
+
+			fetchAndParseJSON_shikiCloudBlack := func(url string) ([]blackunit, error) {
+				// 发送 HTTP GET 请求
+				resp, err := http.Get(url)
+				if err != nil {
+					return nil, err
+				}
+				defer resp.Body.Close()
+
+				// 读取响应体
+				body, _ := io.ReadAll(resp.Body)
+				var jsonData []jsonElement
+				err = json.Unmarshal(
+					body,
+					&jsonData,
+				)
+				if err != nil {
+					return nil, err
+				}
+
+				// 将 JSON 数据转换为 blackunit 结构体数组
+				var blackUnits []blackunit
+				for _, item := range jsonData {
+					unit := blackunit{
+						BlackQQ:      strconv.Itoa(item.FromQQ),
+						BlackGroup:   strconv.Itoa(item.FromGroup),
+						WarningID:    strconv.Itoa(item.Wid),
+						BlackComment: item.Type + " " + item.Note,
+						ErasedStatus: item.IsErased != 0,
+					}
+					blackUnits = append(blackUnits, unit)
+				}
+
+				return blackUnits, nil
+			}
+
+			blackGroupCnt := 0
+			blackQQCnt := 0
+			erasedCnt := 0
+
+			var val = cmdArgs.GetArgN(1)
+			switch strings.ToLower(val) {
+			case "sync":
+				ReplyToSender(ctx, msg, "正在同步云黑...")
+				time.Sleep(1000 * time.Millisecond)
+				url := "https://shiki.stringempty.xyz/blacklist/checked.json?"
+				blackUnits, _ := fetchAndParseJSON_shikiCloudBlack(url)
+				for _, blackitem := range blackUnits {
+					qqTobeBlack := FormatDiceID(ctx, blackitem.BlackQQ, false)
+					groupTobeBlack := FormatDiceID(ctx, blackitem.BlackGroup, true)
+					if !blackitem.ErasedStatus {
+						d.BanList.AddScoreBase(qqTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+						blackQQCnt++
+						d.BanList.AddScoreBase(groupTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+						blackGroupCnt++
+
+					} else {
+						erasedCnt++
+						item, ok := d.BanList.GetByID(qqTobeBlack)
+						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+							item.Score = 0
+							item.Rank = BanRankNormal
+						}
+						item, ok = d.BanList.GetByID(groupTobeBlack)
+						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+							item.Score = 0
+							item.Rank = BanRankNormal
+						}
+					}
+				}
+				ReplyToSender(ctx, msg, fmt.Sprintf("共计从溯洄云黑api获取黑名单群组:%d个，黑名单用户%d名，并有%d组已在云端消除黑名单记录。", blackGroupCnt, blackQQCnt, erasedCnt))
+				return CmdExecuteResult{Matched: true, Solved: true}
+			default:
+				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+			}
+		},
+	}
+
+	d.CmdMap["cloud"] = cmdShikiCloudBlack
+
+	//-----------------------------云黑对接-----------------------------------
 
 	helpForFind := ".find/查询 <关键字> // 查找文档。关键字可以多个，用空格分割\n" +
 		".find #<分组> <关键字> // 查找指定分组下的文档。关键字可以多个，用空格分割\n" +
@@ -695,8 +885,6 @@ func (d *Dice) registerCoreCommands() {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:骰子保存设置"))
 					return CmdExecuteResult{Matched: true, Solved: true}
 				}
-
-				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},
@@ -751,7 +939,7 @@ func (d *Dice) registerCoreCommands() {
 					onlineVer = "\n最新版本: " + ver.VersionLatestDetail + "\n"
 				}
 			}*/
-
+			addonText := "God save the Lord of Astra"
 			var groupWorkInfo, activeText string
 			if inGroup {
 				activeText = "关闭"
@@ -770,7 +958,7 @@ func (d *Dice) registerCoreCommands() {
 			if arch != "386" && arch != "amd64" {
 				ver = fmt.Sprintf("%s %s", ver, arch)
 			}
-			baseText := fmt.Sprintf("SealDice %s%s", ver, onlineVer)
+			baseText := fmt.Sprintf("SealDice %s%s\n%s", ver, onlineVer, addonText)
 			extText := DiceFormatTmpl(ctx, "核心:骰子状态附加文本")
 			if extText != "" {
 				extText = "\n" + extText
@@ -820,6 +1008,60 @@ func (d *Dice) registerCoreCommands() {
 		},
 	}
 	d.CmdMap["dismiss"] = cmdDismiss
+
+	helpForSystem := ".system state/status //查看系统资源占用\n" +
+		".system reload/reboot //重启骰子核心\n" +
+		".system save //保存核心数据"
+	cmdSystem := &CmdItemInfo{
+		Name:      "system",
+		ShortHelp: helpForSystem,
+		Help:      "骰子管理：\n" + helpForSystem,
+		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
+			if ctx.PrivilegeLevel < 100 {
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:提示_无权限"))
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
+			if cmdArgs.IsArgEqual(1, "state") || cmdArgs.IsArgEqual(1, "status") {
+				activeCount := 0
+				serveCount := 0
+				// Pinenutn: Range模板 ServiceAtNew重构代码
+				d.ImSession.ServiceAtNew.Range(func(_ string, gp *GroupInfo) bool {
+					// Pinenutn: ServiceAtNew重构
+					if gp.GroupID != "" &&
+						!strings.HasPrefix(gp.GroupID, "PG-") &&
+						gp.DiceIDExistsMap.Exists(ctx.EndPoint.UserID) {
+						serveCount++
+						if gp.DiceIDActiveMap.Exists(ctx.EndPoint.UserID) {
+							activeCount++
+						}
+					}
+					return true
+				})
+				cpuPercent, _ := cpu.Percent(time.Second, false)
+				cpuInformation, _ := cpu.Info()
+				diskInformation, _ := disk.Usage("C:")
+				currentTime := time.Now().Format("2006-01-02 15:04:05")
+				memInfo, _ := mem.VirtualMemory()
+				ReplyToSender(ctx, msg, fmt.Sprintf("本地时间:%s\n所在群聊数:%d\n开启群聊数:%d\n内存占用:%s%%\nCPU型号:%s\nCPU占用:%s%%\nC盘剩余空间:%sGB\n", currentTime, serveCount, activeCount, fmt.Sprintf("%f", memInfo.UsedPercent), cpuInformation[0].ModelName, Float64SliceToString(cpuPercent), fmt.Sprintf("%f", float64(diskInformation.Free)/1024/1024/1024)))
+				return CmdExecuteResult{Matched: true, Solved: true}
+			} else if cmdArgs.IsArgEqual(1, "reload") || cmdArgs.IsArgEqual(1, "reboot") {
+				var dm = ctx.Dice.Parent
+				if dm.JustForTest {
+					ReplyToSender(ctx, msg, "此指令在展示模式下不可用")
+					return CmdExecuteResult{Matched: true, Solved: true}
+				}
+				ReplyToSender(ctx, msg, "3秒后开始重启")
+				time.Sleep(3 * time.Second)
+				dm.RebootRequestChan <- 1
+			} else if cmdArgs.IsArgEqual(1, "save") {
+				d.Save(false)
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:骰子保存设置"))
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
+			return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+		},
+	}
+	d.CmdMap["system"] = cmdSystem
 
 	readIDList := func(ctx *MsgContext, _ *Message, cmdArgs *CmdArgs) []string {
 		var uidLst []string
@@ -952,7 +1194,6 @@ func (d *Dice) registerCoreCommands() {
 .master unlock <密码(在UI中查看)> // (当Master被人抢占时)清空骰主列表，并使自己成为骰主
 .master list // 查看当前骰主列表
 .master reboot // 重新启动(需要二次确认)
-.master checkupdate // 检查更新(需要二次确认)
 .master relogin // 30s后重新登录，有机会清掉风控(仅master可用)
 .master backup // 做一次备份
 .master reload deck/js/helpdoc // 重新加载牌堆/js/帮助文档
@@ -1094,80 +1335,80 @@ func (d *Dice) registerCoreCommands() {
 					d.Logger.Error("骰子备份:", err)
 					ReplyToSender(ctx, msg, "备份失败！错误已写入日志。可能是磁盘已满所致，建议立即进行处理！")
 				}
-			case "checkupdate":
-				var dm = ctx.Dice.Parent
-				if dm.JustForTest {
-					ReplyToSender(ctx, msg, "此指令在展示模式下不可用")
-					return CmdExecuteResult{Matched: true, Solved: true}
-				}
+			/*case "checkupdate":
+			var dm = ctx.Dice.Parent
+			if dm.JustForTest {
+				ReplyToSender(ctx, msg, "此指令在展示模式下不可用")
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
 
-				if runtime.GOOS == "android" {
-					ReplyToSender(ctx, msg, "检测到手机版，手机版海豹不支持指令更新，请手动下载新版本安装包")
-					return CmdExecuteResult{Matched: true, Solved: true}
-				}
+			if runtime.GOOS == "android" {
+				ReplyToSender(ctx, msg, "检测到手机版，手机版海豹不支持指令更新，请手动下载新版本安装包")
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
 
-				if dm.ContainerMode {
-					ReplyToSender(ctx, msg, "容器模式下禁止指令更新，请手动拉取最新镜像")
-					return CmdExecuteResult{Matched: true, Solved: true}
-				}
+			if dm.ContainerMode {
+				ReplyToSender(ctx, msg, "容器模式下禁止指令更新，请手动拉取最新镜像")
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
 
-				code := cmdArgs.GetArgN(2)
-				if code == "" {
-					var text string
-					dm.AppVersionOnline = nil
-					dm.UpdateCheckRequestChan <- 1
+			code := cmdArgs.GetArgN(2)
+			if code == "" {
+				var text string
+				dm.AppVersionOnline = nil
+				dm.UpdateCheckRequestChan <- 1
 
-					// 等待获取新版本，最多10s
-					for i := 0; i < 5; i++ {
-						time.Sleep(2 * time.Second)
-						if dm.AppVersionOnline != nil {
-							break
-						}
-					}
-
+				// 等待获取新版本，最多10s
+				for i := 0; i < 5; i++ {
+					time.Sleep(2 * time.Second)
 					if dm.AppVersionOnline != nil {
-						text = fmt.Sprintf("当前本地版本为: %s\n当前线上版本为: %s", VERSION.String(), dm.AppVersionOnline.VersionLatestDetail)
-						if dm.AppVersionCode != dm.AppVersionOnline.VersionLatestCode {
-							updateCode = strconv.FormatInt(rand.Int63()%8999+1000, 10)
-							text += fmt.Sprintf("\n如需升级，请输入.master checkupdate %s 确认进行升级\n升级将花费约2分钟，升级失败可能导致进程关闭，建议在接触服务器情况下操作。\n当前进程启动时间: %s", updateCode, time.Unix(dm.AppBootTime, 0).Format("2006-01-02 15:04:05"))
-						}
-					} else {
-						text = fmt.Sprintf("当前本地版本为: %s\n当前线上版本为: %s", VERSION.String(), "未知")
+						break
 					}
-					ReplyToSender(ctx, msg, text)
-					break
 				}
 
-				if code != updateCode || updateCode == "0000" {
-					ReplyToSender(ctx, msg, "无效的升级指令码")
-					break
+				if dm.AppVersionOnline != nil {
+					text = fmt.Sprintf("当前本地版本为: %s\n当前线上版本为: %s", VERSION.String(), dm.AppVersionOnline.VersionLatestDetail)
+					if dm.AppVersionCode != dm.AppVersionOnline.VersionLatestCode {
+						updateCode = strconv.FormatInt(rand.Int63()%8999+1000, 10)
+						text += fmt.Sprintf("\n如需升级，请输入.master checkupdate %s 确认进行升级\n升级将花费约2分钟，升级失败可能导致进程关闭，建议在接触服务器情况下操作。\n当前进程启动时间: %s", updateCode, time.Unix(dm.AppBootTime, 0).Format("2006-01-02 15:04:05"))
+					}
+				} else {
+					text = fmt.Sprintf("当前本地版本为: %s\n当前线上版本为: %s", VERSION.String(), "未知")
 				}
+				ReplyToSender(ctx, msg, text)
+				break
+			}
 
-				ReplyToSender(ctx, msg, "开始下载新版本，完成后将自动进行一次备份")
-				go func() {
-					ret := <-dm.UpdateDownloadedChan
+			if code != updateCode || updateCode == "0000" {
+				ReplyToSender(ctx, msg, "无效的升级指令码")
+				break
+			}
 
-					if ctx.IsPrivate {
-						ctx.Dice.UpgradeWindowID = msg.Sender.UserID
-					} else {
-						ctx.Dice.UpgradeWindowID = ctx.Group.GroupID
-					}
-					ctx.Dice.UpgradeEndpointID = ctx.EndPoint.ID
-					ctx.Dice.Save(true)
+			ReplyToSender(ctx, msg, "开始下载新版本，完成后将自动进行一次备份")
+			go func() {
+				ret := <-dm.UpdateDownloadedChan
 
-					bakFn, _ := ctx.Dice.Parent.Backup(BackupSelectionAll, false)
-					tmpPath := path.Join(os.TempDir(), bakFn)
-					_ = os.MkdirAll(tmpPath, 0755)
-					ctx.Dice.Logger.Infof("将备份文件复制到此路径: %s", tmpPath)
-					_ = cp.Copy(path.Join(BackupDir, bakFn), tmpPath)
+				if ctx.IsPrivate {
+					ctx.Dice.UpgradeWindowID = msg.Sender.UserID
+				} else {
+					ctx.Dice.UpgradeWindowID = ctx.Group.GroupID
+				}
+				ctx.Dice.UpgradeEndpointID = ctx.EndPoint.ID
+				ctx.Dice.Save(true)
 
-					if ret == "" {
-						ReplyToSender(ctx, msg, "准备开始升级，服务即将离线")
-					} else {
-						ReplyToSender(ctx, msg, "升级失败，原因: "+ret)
-					}
-				}()
-				dm.UpdateRequestChan <- d
+				bakFn, _ := ctx.Dice.Parent.Backup(BackupSelectionAll, false)
+				tmpPath := path.Join(os.TempDir(), bakFn)
+				_ = os.MkdirAll(tmpPath, 0755)
+				ctx.Dice.Logger.Infof("将备份文件复制到此路径: %s", tmpPath)
+				_ = cp.Copy(path.Join(BackupDir, bakFn), tmpPath)
+
+				if ret == "" {
+					ReplyToSender(ctx, msg, "准备开始升级，服务即将离线")
+				} else {
+					ReplyToSender(ctx, msg, "升级失败，原因: "+ret)
+				}
+			}()
+			dm.UpdateRequestChan <- d*/
 			case "reboot":
 				var dm = ctx.Dice.Parent
 				if dm.JustForTest {
