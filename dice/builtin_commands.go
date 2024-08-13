@@ -168,6 +168,115 @@ func (d *Dice) registerCoreCommands() {
 	d.CmdMap["black"] = cmdBlack
 	d.CmdMap["ban"] = cmdBlack
 
+	helpForShikiBlack := ".admin blackqq +/- <帐号> [<原因>]\n" +
+		".admin blackgroup +/- <群号> [<原因>]"
+	cmdShikiBlack := &CmdItemInfo{
+		Name:      "admin",
+		ShortHelp: helpForShikiBlack,
+		Help:      "黑名单指令:\n" + helpForShikiBlack,
+		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
+			cmdArgs.ChopPrefixToArgsWith("blackqq", "blackgroup", "-", "+")
+			if ctx.PrivilegeLevel < 100 {
+				ReplyToSender(ctx, msg, "你不具备Master权限")
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
+
+			getID := func() string {
+				if cmdArgs.IsArgEqual(2, "-") || cmdArgs.IsArgEqual(2, "+") {
+					id := cmdArgs.GetArgN(3)
+					if id == "" {
+						return ""
+					}
+
+					isGroup := cmdArgs.IsArgEqual(2, "blackgroup")
+					return FormatDiceID(ctx, id, isGroup)
+				}
+
+				arg := cmdArgs.GetArgN(2)
+				if !strings.Contains(arg, ":") {
+					return ""
+				}
+				return arg
+			}
+
+			var val = cmdArgs.GetArgN(1)
+			var uid string
+			switch strings.ToLower(val) {
+			case "blackqq":
+
+				var subval = cmdArgs.GetArgN(2)
+				if subval == "-" {
+					uid = getID()
+					if uid == "" {
+						return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+					}
+
+					item, ok := d.BanList.GetByID(uid)
+					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+						ReplyToSender(ctx, msg, "找不到用户")
+						break
+					}
+
+					ReplyToSender(ctx, msg, fmt.Sprintf("已将用户 %s 移出%s列表", uid, BanRankText[item.Rank]))
+					item.Score = 0
+					item.Rank = BanRankNormal
+
+				} else if subval == "+" {
+					uid = getID()
+					if uid == "" {
+						return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+					}
+					reason := cmdArgs.GetArgN(4)
+					if reason == "" {
+						reason = "骰主指令"
+					}
+					d.BanList.AddScoreBase(uid, d.BanList.ThresholdBan, "骰主指令", reason, ctx)
+					ReplyToSender(ctx, msg, fmt.Sprintf("已将用户 %s 加入黑名单，原因: %s", uid, reason))
+
+				} else {
+					return CmdExecuteResult{Matched: true, Solved: false, ShowHelp: true}
+				}
+			case "blackgroup":
+				var subval = cmdArgs.GetArgN(2)
+				if subval == "-" {
+					uid = getID()
+					if uid == "" {
+						return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+					}
+
+					item, ok := d.BanList.GetByID(uid)
+					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+						ReplyToSender(ctx, msg, "找不到群组")
+						break
+					}
+
+					ReplyToSender(ctx, msg, fmt.Sprintf("已将群组 %s 移出%s列表", uid, BanRankText[item.Rank]))
+					item.Score = 0
+					item.Rank = BanRankNormal
+
+				} else if subval == "+" {
+					uid = getID()
+					if uid == "" {
+						return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+					}
+					reason := cmdArgs.GetArgN(4)
+					if reason == "" {
+						reason = "骰主指令"
+					}
+					d.BanList.AddScoreBase(uid, d.BanList.ThresholdBan, "骰主指令", reason, ctx)
+					ReplyToSender(ctx, msg, fmt.Sprintf("已将群组 %s 加入黑名单，原因: %s", uid, reason))
+
+				} else {
+					return CmdExecuteResult{Matched: true, Solved: false, ShowHelp: true}
+				}
+			default:
+				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+			}
+			return CmdExecuteResult{Matched: true, Solved: true}
+		},
+	}
+	d.CmdMap["admin"] = cmdShikiBlack
+
 	helpForFind := ".find/查询 <关键字> // 查找文档。关键字可以多个，用空格分割\n" +
 		".find #<分组> <关键字> // 查找指定分组下的文档。关键字可以多个，用空格分割\n" +
 		".find <数字ID> // 显示该ID的词条\n" +
@@ -474,8 +583,8 @@ func (d *Dice) registerCoreCommands() {
 
 	cmdBot := &CmdItemInfo{
 		Name:      "bot",
-		ShortHelp: ".bot on/off/about/bye/quit // 开启、关闭、查看信息、退群",
-		Help:      "骰子管理:\n.bot on/off/about/bye[exit,quit] // 开启、关闭、查看信息、退群",
+		ShortHelp: ".bot on/off/bye/quit // 开启、关闭、退群",
+		Help:      "骰子管理:\n.bot on/off/bye[exit,quit] // 开启、关闭、退群",
 		Raw:       true,
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
 			inGroup := msg.MessageType == "group"
@@ -589,6 +698,30 @@ func (d *Dice) registerCoreCommands() {
 
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
+			return CmdExecuteResult{Matched: true, Solved: true}
+		},
+	}
+
+	d.CmdMap["bot"] = cmdBot
+
+	cmdSealBot := &CmdItemInfo{
+		Name:      "sealbot",
+		ShortHelp: ".sealbot 查看信息",
+		Help:      "骰子管理:\n.sealbot 查看信息",
+		Raw:       true,
+		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
+			inGroup := msg.MessageType == "group"
+
+			if inGroup {
+				// 不响应裸指令选项
+				if len(cmdArgs.At) < 1 && ctx.Dice.IgnoreUnaddressedBotCmd {
+					return CmdExecuteResult{Matched: true, Solved: false}
+				}
+				// 不响应at其他人
+				if cmdArgs.SomeoneBeMentionedButNotMe {
+					return CmdExecuteResult{Matched: true, Solved: false}
+				}
+			}
 
 			if cmdArgs.SomeoneBeMentionedButNotMe {
 				return CmdExecuteResult{Matched: false, Solved: false}
@@ -611,13 +744,13 @@ func (d *Dice) registerCoreCommands() {
 			})
 
 			onlineVer := ""
-			if d.Parent.AppVersionOnline != nil {
+			/*if d.Parent.AppVersionOnline != nil {
 				ver := d.Parent.AppVersionOnline
 				// 如果当前不是最新版，那么提示
 				if ver.VersionLatestCode != VERSION_CODE {
 					onlineVer = "\n最新版本: " + ver.VersionLatestDetail + "\n"
 				}
-			}
+			}*/
 
 			var groupWorkInfo, activeText string
 			if inGroup {
@@ -649,7 +782,7 @@ func (d *Dice) registerCoreCommands() {
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},
 	}
-	d.CmdMap["bot"] = cmdBot
+	d.CmdMap["sealbot"] = cmdSealBot
 
 	helpForDismiss := ".dismiss // 退出当前群，主用于QQ，支持机器人的平台可以直接移出成员"
 	cmdDismiss := &CmdItemInfo{

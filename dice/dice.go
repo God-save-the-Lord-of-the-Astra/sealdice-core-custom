@@ -33,7 +33,7 @@ import (
 )
 
 var (
-	APPNAME = "SealDice"
+	APPNAME = "SealDice-custom"
 
 	// VERSION 版本号，按固定格式，action 在构建时可能会自动注入部分信息
 	// 正式：主版本号+yyyyMMdd，如 1.4.5+20240308
@@ -44,12 +44,12 @@ var (
 	// VERSION_MAIN 主版本号
 	VERSION_MAIN = "1.5.0"
 	// VERSION_PRERELEASE 先行版本号
-	VERSION_PRERELEASE = "-dev"
+	VERSION_PRERELEASE = "-custom"
 	// VERSION_BUILD_METADATA 版本编译信息
 	VERSION_BUILD_METADATA = ""
 
 	// APP_CHANNEL 更新频道，stable/dev，在 action 构建时自动注入
-	APP_CHANNEL = "dev" //nolint:revive
+	APP_CHANNEL = "" //nolint:revive
 
 	VERSION_CODE = int64(1004005) //nolint:revive
 

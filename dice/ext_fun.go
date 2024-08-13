@@ -393,6 +393,7 @@ func RegisterBuiltinExtFun(self *Dice) {
 			if cmdArgs.IsArgEqual(1, "help") {
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
+
 			if msg.Platform == "OpenQQCH" &&
 				strings.HasPrefix(msg.GuildID, "OpenQQCH-Guild:") &&
 				strings.HasPrefix(msg.GroupID, "OpenQQCH-Channel:") {
@@ -467,7 +468,8 @@ func RegisterBuiltinExtFun(self *Dice) {
 	botWelcomeHelp := ".welcome on // 开启\n" +
 		".welcome off // 关闭\n" +
 		".welcome show // 查看当前欢迎语\n" +
-		".welcome set <欢迎语> // 设定欢迎语"
+		".welcome set <欢迎语> // 设定欢迎语\n" +
+		".welcome clr // 设定欢迎语"
 	cmdWelcome := CmdItemInfo{
 		Name:              "welcome",
 		ShortHelp:         botWelcomeHelp,
@@ -497,6 +499,11 @@ func RegisterBuiltinExtFun(self *Dice) {
 					info = "\n状态: 关闭"
 				}
 				ReplyToSender(ctx, msg, "当前欢迎语:\n"+welcome+info)
+			} else if cmdArgs.IsArgEqual(1, "clr") {
+				ctx.Group.GroupWelcomeMessage = ""
+				ctx.Group.ShowGroupWelcome = false
+				ctx.Group.UpdatedAtTime = time.Now().Unix()
+				ReplyToSender(ctx, msg, "入群欢迎语已清空并关闭")
 			} else if _, ok := cmdArgs.EatPrefixWith("set"); ok {
 				text2 := strings.TrimSpace(cmdArgs.RawArgs[len("set"):])
 				ctx.Group.GroupWelcomeMessage = text2
@@ -1288,45 +1295,6 @@ func RegisterBuiltinExtFun(self *Dice) {
 		},
 	}
 
-	cmdCheckHelp := `.check // 生成海豹校验码，可用于在官网校验是否是可信海豹
-.check --plain // 生成 ASCII 字符的海豹校验码`
-	cmdCheck := CmdItemInfo{
-		Name:      "check",
-		ShortHelp: cmdCheckHelp,
-		Help:      "校验:\n" + cmdCheckHelp,
-		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
-			if cmdArgs.IsArgEqual(1, "help") {
-				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
-			}
-			var code string
-			if kv := cmdArgs.GetKwarg("plain"); kv != nil && kv.AsBool {
-				code = GenerateVerificationCode(
-					msg.Platform,
-					msg.Sender.UserID,
-					msg.Sender.Nickname,
-					true,
-				)
-			} else {
-				code = GenerateVerificationCode(
-					msg.Platform,
-					msg.Sender.UserID,
-					msg.Sender.Nickname,
-					false,
-				)
-			}
-			var result string
-			if len(code) == 0 {
-				result = "无法生成海豹校验码，该骰子不是官方发布的海豹！"
-			} else {
-				VarSetValueStr(ctx, "$tcode", code)
-				VarSetValueStr(ctx, "$t校验码", code)
-				result = DiceFormatTmpl(ctx, "其它:校验_成功")
-			}
-			ReplyToSender(ctx, msg, result)
-			return CmdExecuteResult{Matched: true, Solved: true}
-		},
-	}
-
 	self.RegisterExtension(&ExtInfo{
 		Name:            "fun", // 扩展的名称，需要用于指令中，写简短点      2024.05.10: 目前被看成是 function 的缩写了（
 		Version:         "1.1.0",
@@ -1363,7 +1331,6 @@ func RegisterBuiltinExtFun(self *Dice) {
 			"jsr":     &cmdJsr,
 			"drl":     &cmdDrl,
 			"drlh":    &cmdDrl,
-			"check":   &cmdCheck,
 		},
 	})
 }
