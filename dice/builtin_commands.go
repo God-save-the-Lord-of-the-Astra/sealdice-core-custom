@@ -188,7 +188,7 @@ func (d *Dice) registerCoreCommands() {
 						return ""
 					}
 
-					isGroup := cmdArgs.IsArgEqual(2, "blackgroup")
+					isGroup := cmdArgs.IsArgEqual(1, "blackgroup")
 					return FormatDiceID(ctx, id, isGroup)
 				}
 
