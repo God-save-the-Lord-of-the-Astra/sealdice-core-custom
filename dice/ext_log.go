@@ -214,8 +214,8 @@ func RegisterBuiltinExtLog(self *Dice) {
 					VarSetValueInt64(ctx, "$t当前记录条数", lines)
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_开启_成功"))
 				} else {
-					VarSetValueStr(ctx, "$t记录名称", name)
-					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_开启_失败_无此记录"))
+					//VarSetValueStr(ctx, "$t记录名称", name)
+					//ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_开启_失败_无此记录"))
 					//按照星界老师的说法，这边要改成lognew的逻辑
 					
 					if group.LogCurName != "" {
