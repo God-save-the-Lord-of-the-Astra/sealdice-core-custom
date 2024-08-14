@@ -1,6 +1,7 @@
 package dice
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-module/carbon"
+	ds "github.com/sealdice/dicescript"
 	"go.uber.org/zap"
 
 	"sealdice-core/dice/model"
@@ -632,12 +634,14 @@ func RegisterBuiltinExtLog(self *Dice) {
 				if errors.Is(err, ErrGroupCardOverlong) { // 大约不至于会走到这里，但是为了统一也这样写了
 					return handleOverlong(ctx, msg, text)
 				}
-				ReplyToSender(ctx, msg, "已自动设置名片为空白格式: "+text+"\n如有权限会持续自动改名片。使用.sn off可关闭")
+				VarSetValueStr(ctx, "$t名片格式", "空白")
+				VarSetValueStr(ctx, "$t名片预览", text)
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:名片_自动设置"))
 			case "off", "cancel":
 				_, _ = SetPlayerGroupCardByTemplate(ctx, "{$t玩家_RAW}")
 				ctx.Player.AutoSetNameTemplate = ""
 				ctx.Player.UpdatedAtTime = time.Now().Unix()
-				ReplyToSender(ctx, msg, fmt.Sprintf("已关闭对%s的名片自动修改", getPlayerNameTempFunc(ctx)))
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:名片_取消设置"))
 			case "expr":
 				t := cmdArgs.GetRestArgsFrom(2)
 				if len(t) > 80 {
@@ -659,7 +663,9 @@ func RegisterBuiltinExtLog(self *Dice) {
 						return handleOverlong(ctx, msg, text)
 					} else {
 						ctx.Player.UpdatedAtTime = time.Now().Unix()
-						ReplyToSender(ctx, msg, "应用玩家自设，预览文本: "+text)
+						VarSetValueStr(ctx, "$t名片格式", "玩家自设")
+						VarSetValueStr(ctx, "$t名片预览", text)
+						ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:名片_自动设置"))
 					}
 				}
 			default:
@@ -679,7 +685,9 @@ func RegisterBuiltinExtLog(self *Dice) {
 
 					text, _ := SetPlayerGroupCardByTemplate(ctx, t.Template)
 					ctx.Player.AutoSetNameTemplate = t.Template
-					ReplyToSender(ctx, msg, "已自动设置名片为"+val+"格式: "+text+"\n如有权限会持续自动改名片。使用.sn off可关闭")
+					VarSetValueStr(ctx, "$t名片格式", val)
+					VarSetValueStr(ctx, "$t名片预览", text)
+					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:名片_自动设置"))
 					ok = true
 					return false
 				})
@@ -912,8 +920,7 @@ func GetLogTxt(ctx *MsgContext, groupID string, logName string, fileNamePrefix s
 	}
 
 	for _, line := range lines {
-		timeTxt := time.Unix(line.Time, 0).Format("2006-01-02 15:04:05") //这里时间信息也要改
-		//timeTxt := time.Unix(line.Time, 0)
+		timeTxt := time.Unix(line.Time, 0).Format("2006-01-02 15:04:05")
 		text := fmt.Sprintf("%s(%v) %s\n%s\n\n", line.Nickname, line.IMUserID, timeTxt, line.Message)
 		_, _ = tempLog.WriteString(text)
 	}
@@ -991,7 +998,7 @@ func LogRollBriefByPC(ctx *MsgContext, items []*model.LogOneItem, showAll bool, 
 			if info["rule"] == nil {
 				switch info["cmd"] {
 				case "roll":
-					items, ok2 := info["items"].([]interface{})
+					items, ok2 := info["items"].([]any)
 					if !ok2 {
 						continue
 					}
@@ -1012,7 +1019,7 @@ func LogRollBriefByPC(ctx *MsgContext, items []*model.LogOneItem, showAll bool, 
 					setupName(nickname)
 
 					for _, _j := range items {
-						j, ok2 := _j.(map[string]interface{})
+						j, ok2 := _j.(map[string]any)
 						if !ok2 {
 							continue
 						}
@@ -1077,16 +1084,33 @@ func LogRollBriefByPC(ctx *MsgContext, items []*model.LogOneItem, showAll bool, 
 						setupName(nickname)
 
 						if j["type"] == "mod" {
+							readNum := func(dataKey, key string) {
+								if val, ok := j[dataKey].(float64); ok {
+									// 旧版本兼容，float64是因为json unmarshal默认就是这个
+									pcInfo[nickname][key] = int(val)
+								} else {
+									// TODO: 处理的不是很好，这里后续大段代码依赖了值为int的情况，但是现在实际可以为任何类型，只是不常用
+									b, _ := json.Marshal(j[dataKey])
+									var v ds.VMValue
+									if err := v.UnmarshalJSON(b); err == nil {
+										if v.TypeId == ds.VMTypeInt {
+											i, _ := v.ReadInt()
+											pcInfo[nickname][key] = int(i)
+										}
+									}
+								}
+							}
+
 							attr := getName(j["attr"].(string))
 							// 如果没有旧值，弄一个
 							key := fmt.Sprintf("%v:旧值", attr)
 							if pcInfo[nickname][key] == 0 {
-								pcInfo[nickname][key] = int(j["valOld"].(float64))
+								readNum("valOld", key)
 							}
 
 							key2 := fmt.Sprintf("%v:新值", attr)
 							// if pcInfo[nickname][key2] == 0 {
-							pcInfo[nickname][key2] = int(j["valNew"].(float64))
+							readNum("valNew", key2)
 							// }
 						}
 					}

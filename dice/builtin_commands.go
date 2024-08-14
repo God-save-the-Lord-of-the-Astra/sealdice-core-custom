@@ -1584,6 +1584,7 @@ func (d *Dice) registerCoreCommands() {
 					r, detail, err = DiceExprEvalBase(ctx, cmdArgs.CleanArgs, RollExtraFlags{
 						DefaultDiceSideNum: getDefaultDicePoints(ctx),
 						DisableBlock:       true,
+						V2Only:             true,
 					})
 
 					if r != nil && !r.IsCalculated() {
