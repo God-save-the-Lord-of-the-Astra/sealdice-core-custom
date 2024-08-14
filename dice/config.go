@@ -784,6 +784,12 @@ func setupBaseTextTemplate(d *Dice) {
 			"骰子关闭": {
 				{"<{核心:骰子名字}> 停止服务", 1},
 			},
+			"开启自定义回复": {
+				{"<{核心:骰子名字}>已在此群内开启自定义回复！\n群内工作状态:{$t旧群内状态}-->开", 1},
+			},
+			"关闭自定义回复": {
+				{"<{核心:骰子名字}>已在此群内关闭自定义回复！\n群内工作状态:{$t旧群内状态}-->关", 1},
+			},
 			"骰子进群": {
 				{`<{核心:骰子名字}> 已经就绪。可通过.help查看手册\n[图:data/images/sealdice.png]\nCOC/DND玩家可以使用.set coc/dnd在两种模式中切换\n已搭载自动重连，如遇风控不回可稍作等待`, 1},
 			},
@@ -1492,6 +1498,14 @@ func setupBaseTextTemplate(d *Dice) {
 			},
 			"骰子关闭": {
 				SubType:  ".bot off",
+				TopOrder: 1,
+			},
+			"开启自定义回复": {
+				SubType:  ".reply on",
+				TopOrder: 1,
+			},
+			"关闭自定义回复": {
+				SubType:  ".reply off",
 				TopOrder: 1,
 			},
 			"骰子进群": {
