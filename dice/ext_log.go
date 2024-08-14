@@ -217,6 +217,19 @@ func RegisterBuiltinExtLog(self *Dice) {
 					VarSetValueStr(ctx, "$t记录名称", name)
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_开启_失败_无此记录"))
 					//按照星界老师的说法，这边要改成lognew的逻辑
+					
+					if group.LogCurName != "" {
+						VarSetValueInt64(ctx, "$t存在开启记录", 1)
+					} else {
+						VarSetValueInt64(ctx, "$t存在开启记录", 0)
+					}
+					VarSetValueStr(ctx, "$t上一记录名称", group.LogCurName)
+					VarSetValueStr(ctx, "$t记录名称", name)
+					group.LogCurName = name
+					group.LogOn = true
+					group.UpdatedAtTime = time.Now().Unix()
+
+					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_新建"))
 				}
 
 				return CmdExecuteResult{Matched: true, Solved: true}
