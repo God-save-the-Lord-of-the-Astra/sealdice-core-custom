@@ -2476,14 +2476,16 @@ func (d *Dice) registerCoreCommands() {
 				}
 				extReply := ctx.Dice.ExtFind("reply")
 				ctx.Group.ExtActive(extReply)
-				ReplyToSender(ctx, msg, fmt.Sprintf("已在当前群开启自定义回复(%s➯开)。\n此指令等价于.ext reply on", onText))
+				VarSetValueStr(ctx, "$t旧群内状态", onText)
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:开启自定义回复"))
 			case "off":
 				onText := "开"
 				if ctx.Group.ExtGetActive("reply") == nil {
 					onText = "关"
 				}
 				ctx.Group.ExtInactiveByName("reply")
-				ReplyToSender(ctx, msg, fmt.Sprintf("已在当前群关闭自定义回复(%s➯关)。\n此指令等价于.ext reply off", onText))
+				VarSetValueStr(ctx, "$t旧群内状态", onText)
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:关闭自定义回复"))
 			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
