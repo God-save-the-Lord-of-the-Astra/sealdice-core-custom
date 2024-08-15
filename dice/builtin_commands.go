@@ -304,7 +304,7 @@ func (d *Dice) registerCoreCommands() {
 
 				n := strings.Split(gid, ":") // 不验证是否合法，反正下面会检查是否在 ServiceAtNew
 				platform := strings.Split(n[0], "-")[0]
-
+				gid = "QQ-Group:" + gid // 强制当作QQ群聊处理
 				gp, ok := ctx.Session.ServiceAtNew.Load(gid)
 				if !ok || len(n[0]) < 2 {
 					ReplyToSender(ctx, msg, fmt.Sprintf("群组列表中没有找到%s", gid))
@@ -436,9 +436,15 @@ func (d *Dice) registerCoreCommands() {
 					qqTobeBlack := FormatDiceID(ctx, blackitem.BlackQQ, false)
 					groupTobeBlack := FormatDiceID(ctx, blackitem.BlackGroup, true)
 					if !blackitem.ErasedStatus {
-						d.BanList.AddScoreBase(qqTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+						item, ok := d.BanList.GetByID(qqTobeBlack)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(qqTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+						}
 						blackQQCnt++
-						d.BanList.AddScoreBase(groupTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+						item, ok = d.BanList.GetByID(groupTobeBlack)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(groupTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+						}
 						blackGroupCnt++
 
 					} else {
@@ -466,6 +472,57 @@ func (d *Dice) registerCoreCommands() {
 	d.CmdMap["cloud"] = cmdShikiCloudBlack
 
 	//-----------------------------云黑对接-----------------------------------
+
+	//--------------------------------接收溯洄系骰子自动生成的warning----------------------------------------
+	/*helpForShikiWarning := "用于接收溯洄系骰子自动生成的warning"
+	cmdShikiWarning := &CmdItemInfo{
+		Name:      "warning",
+		ShortHelp: helpForShikiWarning,
+		Help:      "黑名单接收:\n" + helpForShikiWarning,
+		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
+			if ctx.PrivilegeLevel < 100 {
+				ReplyToSender(ctx, msg, "你不具备Master权限")
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
+			type warningMessage struct {
+				Comment    string `json:"comment"`
+				Wid        int    `json:"wid"`
+				MasterQQ   int    `json:"masterQQ"`
+				FromGroup  int    `json:"fromGroup"`
+				LastUpdate string `json:"lastUpdate"`
+				Time       string `json:"time"`
+				DiceMaid   int    `json:"DiceMaid"`
+				Note       string `json:"note"`
+				Type       string `json:"type"`
+				FromQQ     int    `json:"fromQQ"`
+			}
+
+			warningInformation := strings.ReplaceAll(cmdArgs.Args[0], "\n", "")
+			var warningStruct warningMessage
+			json.Unmarshal([]byte(warningInformation), &warningStruct)
+			if warningStruct.Type == "erase" {
+				warningEraseEventQQ := fmt.Sprintf("QQ:%s", strconv.Itoa(warningStruct.FromQQ))
+				item, ok := d.BanList.GetByID(warningEraseEventQQ)
+				if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+					ReplyToSender(ctx, msg, "找不到用户")
+					return CmdExecuteResult{Matched: true, Solved: true}
+				}
+				item.Score = 0
+				item.Rank = BanRankNormal
+				ReplyToSender(ctx, msg, fmt.Sprintf("成功移除wid为:%d的黑名单组。\n\n%s", warningStruct.Wid, fmt.Sprintf("%s%s", "!warning", cmdArgs.Args[0])))
+			} else {
+				warningEventQQ := fmt.Sprintf("QQ:%s", strconv.Itoa(warningStruct.FromQQ))
+				warningEventGroup := fmt.Sprintf("QQ-Group:%s", strconv.Itoa(warningStruct.FromGroup))
+				warningComment := warningStruct.Comment
+				d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningComment, "", ctx)
+				d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningComment, "", ctx)
+				ReplyToSender(ctx, msg, fmt.Sprintf("成功加入wid为:%d的黑名单组。\n\n%s", warningStruct.Wid, fmt.Sprintf("%s%s", "!warning", cmdArgs.Args[0])))
+			}
+			return CmdExecuteResult{Matched: true, Solved: true}
+		},
+	}
+	d.CmdMap["warning"] = cmdShikiWarning*/
+	//--------------------------------接收溯洄系骰子自动生成的warning----------------------------------------
 
 	helpForFind := ".find/查询 <关键字> // 查找文档。关键字可以多个，用空格分割\n" +
 		".find #<分组> <关键字> // 查找指定分组下的文档。关键字可以多个，用空格分割\n" +

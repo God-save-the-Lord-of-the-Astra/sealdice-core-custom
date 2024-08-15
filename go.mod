@@ -64,6 +64,7 @@ require (
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/xuri/excelize/v2 v2.8.1
 	github.com/yuin/goldmark v1.7.4
+	github.com/yuin/gopher-lua v1.1.1
 	go.etcd.io/bbolt v1.3.9
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.25.0
