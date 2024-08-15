@@ -222,18 +222,6 @@ type LastWelcomeInfo struct {
 	Time    int64
 }
 
-// 兼容溯洄warning
-/*type warningtext struct {
-	warningtype string
-	danger      string
-	fromGroup   string
-	fromQQ      string
-	note        string
-	time        string
-	DiceMaid    string
-	commment    string
-}*/
-
 func (msgQQ *MessageQQ) toStdMessage() *Message {
 	msg := new(Message)
 	msg.Time = msgQQ.Time
@@ -956,22 +944,23 @@ func (pa *PlatformAdapterGocq) Serve() int {
 				}
 
 				txt := fmt.Sprintf("被踢出群: 在QQ群组<%s>(%s)中被踢出，操作者:<%s>(%s)%s", groupName, msgQQ.GroupID, userName, msgQQ.OperatorID, extra)
-
 				//兼容溯洄warning
-				/*kickwarning := warningtext{
-					"kick",
-					"2",
-					string(msgQQ.GroupID),
-					string(msgQQ.OperatorID),
-					"被踢出",
-					string(time.Now().Format("2006-01-02 15:04:05")),
-					"",
-					"",
+				eventGroup, _ := strconv.Atoi(strings.ReplaceAll(msg.GroupID, "QQ-Group:", ""))
+				eventQQ, _ := strconv.Atoi(strings.ReplaceAll(opUID, "QQ:", ""))
+				kickwarning := warningMessage{
+					Wid:       0,
+					Type:      "kick",
+					Danger:    2,
+					FromGroup: int64(eventGroup),
+					FromQQ:    int64(eventQQ),
+					Time:      time.Now().Format("2006-01-02 15:04:05"),
+					Note:      "",
+					Comment:   txt,
 				}
 				kickwarning_json, _ := json.MarshalIndent(kickwarning, "", "\t")
 				kickwarning_txt := string(kickwarning_json)
 				log.Info(kickwarning_txt)
-				ctx.Notice(kickwarning_txt)*/
+				ctx.Notice(kickwarning_txt)
 				log.Info(txt)
 				ctx.Notice(txt)
 
@@ -1003,21 +992,22 @@ func (pa *PlatformAdapterGocq) Serve() int {
 				ctx.Dice.BanList.AddScoreByGroupMuted(opUID, msg.GroupID, ctx)
 				txt := fmt.Sprintf("被禁言: 在群组<%s>(%s)中被禁言，时长%d秒，操作者:<%s>(%s)", groupName, msgQQ.GroupID, msgQQ.Duration, userName, msgQQ.OperatorID)
 				//兼容溯洄warning
-				/*mutewarning := warningtext{
-					"mute",
-					"2",
-					string(msgQQ.GroupID),
-					string(msgQQ.OperatorID),
-					"被禁言",
-					string(time.Now().Format("2006-01-02 15:04:05")),
-					"",
-					"",
+				eventGroup, _ := strconv.Atoi(strings.ReplaceAll(msg.GroupID, "QQ-Group:", ""))
+				eventQQ, _ := strconv.Atoi(strings.ReplaceAll(opUID, "QQ:", ""))
+				mutewarning := warningMessage{
+					Wid:       0,
+					Type:      "ban",
+					Danger:    2,
+					FromGroup: int64(eventGroup),
+					FromQQ:    int64(eventQQ),
+					Time:      time.Now().Format("2006-01-02 15:04:05"),
+					Note:      "",
+					Comment:   txt,
 				}
 				mutewarning_json, _ := json.MarshalIndent(mutewarning, "", "\t")
 				mutewarning_txt := string(mutewarning_json)
 				log.Info(mutewarning_txt)
 				ctx.Notice(mutewarning_txt)
-				*/
 				log.Info(txt)
 				ctx.Notice(txt)
 			}

@@ -1,6 +1,7 @@
 package dice
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,6 +44,20 @@ func Float64SliceToString(numbers []float64) string {
 
 	// 返回结果字符串
 	return result.String()
+}
+
+type warningMessage struct {
+	Wid       int64  `json:"wid"`
+	Type      string `json:"type"`
+	Danger    int    `json:"danger"`
+	FromGroup int64  `json:"fromGID"`
+	FromQQ    int64  `json:"fromUID"`
+	InviterQQ int64  `json:"inviterQQ"`
+	Time      string `json:"time"`
+	Note      string `json:"note"`
+	DiceMaid  int64  `json:"DiceMaid"`
+	MasterQQ  int64  `json:"masterQQ"`
+	Comment   string `json:"comment"`
 }
 
 /** 这几条指令不能移除 */
@@ -303,16 +318,10 @@ func (d *Dice) registerCoreCommands() {
 				}
 
 				n := strings.Split(gid, ":") // 不验证是否合法，反正下面会检查是否在 ServiceAtNew
-				platform := strings.Split(n[0], "-")[0]
-				gid = "QQ-Group:" + gid // 强制当作QQ群聊处理
+				gid = "QQ-Group:" + gid      // 强制当作QQ群聊处理
 				gp, ok := ctx.Session.ServiceAtNew.Load(gid)
 				if !ok || len(n[0]) < 2 {
 					ReplyToSender(ctx, msg, fmt.Sprintf("群组列表中没有找到%s", gid))
-					return CmdExecuteResult{Matched: true, Solved: true}
-				}
-
-				if msg.Platform != platform {
-					ReplyToSender(ctx, msg, fmt.Sprintf("目标群组不在当前平台，请前往%s完成操作", platform))
 					return CmdExecuteResult{Matched: true, Solved: true}
 				}
 
@@ -422,8 +431,11 @@ func (d *Dice) registerCoreCommands() {
 			}
 
 			blackGroupCnt := 0
+			blackGroupNewCnt := 0
 			blackQQCnt := 0
+			blackQQNewCnt := 0
 			erasedCnt := 0
+			erasedNewCnt := 0
 
 			var val = cmdArgs.GetArgN(1)
 			switch strings.ToLower(val) {
@@ -461,7 +473,7 @@ func (d *Dice) registerCoreCommands() {
 						}
 					}
 				}
-				ReplyToSender(ctx, msg, fmt.Sprintf("共计从溯洄云黑api获取黑名单群组:%d个，黑名单用户%d名，并有%d组已在云端消除黑名单记录。", blackGroupCnt, blackQQCnt, erasedCnt))
+				ReplyToSender(ctx, msg, fmt.Sprintf("共计从溯洄云黑api获取黑名单群组:%d个，新增:%d个；黑名单用户:%d名，新增:%d名。并有%d组已在云端消除黑名单记录，新增%d组。", blackGroupCnt, blackGroupNewCnt, blackQQCnt, blackQQNewCnt, erasedCnt, erasedNewCnt))
 				return CmdExecuteResult{Matched: true, Solved: true}
 			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
@@ -474,7 +486,7 @@ func (d *Dice) registerCoreCommands() {
 	//-----------------------------云黑对接-----------------------------------
 
 	//--------------------------------接收溯洄系骰子自动生成的warning----------------------------------------
-	/*helpForShikiWarning := "用于接收溯洄系骰子自动生成的warning"
+	helpForShikiWarning := "溯洄云黑播报处理"
 	cmdShikiWarning := &CmdItemInfo{
 		Name:      "warning",
 		ShortHelp: helpForShikiWarning,
@@ -484,44 +496,69 @@ func (d *Dice) registerCoreCommands() {
 				ReplyToSender(ctx, msg, "你不具备Master权限")
 				return CmdExecuteResult{Matched: true, Solved: true}
 			}
-			type warningMessage struct {
-				Comment    string `json:"comment"`
-				Wid        int    `json:"wid"`
-				MasterQQ   int    `json:"masterQQ"`
-				FromGroup  int    `json:"fromGroup"`
-				LastUpdate string `json:"lastUpdate"`
-				Time       string `json:"time"`
-				DiceMaid   int    `json:"DiceMaid"`
-				Note       string `json:"note"`
-				Type       string `json:"type"`
-				FromQQ     int    `json:"fromQQ"`
+
+			// 解析警告信息
+			warningInformation := strings.Join(cmdArgs.Args, "")
+			var warningStruct warningMessage
+			err := json.Unmarshal([]byte(warningInformation), &warningStruct)
+			if err != nil {
+				ReplyToSender(ctx, msg, "警告信息解析失败"+cmdArgs.Args[0])
+				return CmdExecuteResult{Matched: true, Solved: true}
 			}
 
-			warningInformation := strings.ReplaceAll(cmdArgs.Args[0], "\n", "")
-			var warningStruct warningMessage
-			json.Unmarshal([]byte(warningInformation), &warningStruct)
-			if warningStruct.Type == "erase" {
-				warningEraseEventQQ := fmt.Sprintf("QQ:%s", strconv.Itoa(warningStruct.FromQQ))
-				item, ok := d.BanList.GetByID(warningEraseEventQQ)
-				if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-					ReplyToSender(ctx, msg, "找不到用户")
-					return CmdExecuteResult{Matched: true, Solved: true}
+			retMes := ""
+			if warningStruct.Type != "erase" {
+				// 处理fromGroup和fromQQ
+				if warningStruct.FromGroup != 0 {
+					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGroup)
+					item, ok := d.BanList.GetByID(warningEventGroup)
+					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+						d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+					}
+					retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
 				}
-				item.Score = 0
-				item.Rank = BanRankNormal
-				ReplyToSender(ctx, msg, fmt.Sprintf("成功移除wid为:%d的黑名单组。\n\n%s", warningStruct.Wid, fmt.Sprintf("%s%s", "!warning", cmdArgs.Args[0])))
+
+				if warningStruct.FromQQ != 0 {
+					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
+					item, ok := d.BanList.GetByID(warningEventQQ)
+					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+						d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+					}
+					retMes += fmt.Sprintf("已将%s加入黑名单✓", warningEventQQ)
+				}
 			} else {
-				warningEventQQ := fmt.Sprintf("QQ:%s", strconv.Itoa(warningStruct.FromQQ))
-				warningEventGroup := fmt.Sprintf("QQ-Group:%s", strconv.Itoa(warningStruct.FromGroup))
-				warningComment := warningStruct.Comment
-				d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningComment, "", ctx)
-				d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningComment, "", ctx)
-				ReplyToSender(ctx, msg, fmt.Sprintf("成功加入wid为:%d的黑名单组。\n\n%s", warningStruct.Wid, fmt.Sprintf("%s%s", "!warning", cmdArgs.Args[0])))
+				// 处理fromGroup和fromQQ
+				if warningStruct.FromGroup != 0 {
+					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGroup)
+					item, ok := d.BanList.GetByID(warningEventGroup)
+					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+						item.Score = 0
+						item.Rank = BanRankNormal
+					}
+					retMes += fmt.Sprintf("已将%s移除黑名单✓", warningEventGroup)
+				}
+				if warningStruct.FromQQ != 0 {
+					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
+					item, ok := d.BanList.GetByID(warningEventQQ)
+					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+						item.Score = 0
+						item.Rank = BanRankNormal
+					}
+					retMes += fmt.Sprintf("已将%s移除黑名单✓", warningEventQQ)
+				}
+
 			}
+			var warningInformationJson bytes.Buffer
+			_ = json.Indent(&warningInformationJson, []byte(warningInformation), "", "    ")
+
+			ReplyToSender(ctx, msg, retMes)
+			ReplyToSender(ctx, msg, fmt.Sprintf("%s %s已通知%s不良记录%d:\n!warning%s", time.Now().Format("2006-01-02 15:04:05"), ctx.Player.Name, "骰娘", warningStruct.Wid, warningInformationJson.String()))
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},
 	}
-	d.CmdMap["warning"] = cmdShikiWarning*/
+
+	d.CmdMap["warning"] = cmdShikiWarning
+
 	//--------------------------------接收溯洄系骰子自动生成的warning----------------------------------------
 
 	helpForFind := ".find/查询 <关键字> // 查找文档。关键字可以多个，用空格分割\n" +
