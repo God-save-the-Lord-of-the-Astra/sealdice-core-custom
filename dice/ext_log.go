@@ -217,7 +217,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 					//VarSetValueStr(ctx, "$t记录名称", name)
 					//ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_开启_失败_无此记录"))
 					//按照星界老师的说法，这边要改成lognew的逻辑
-					
+
 					if group.LogCurName != "" {
 						VarSetValueInt64(ctx, "$t存在开启记录", 1)
 					} else {
@@ -473,6 +473,8 @@ func RegisterBuiltinExtLog(self *Dice) {
 					uri = "files://" + logFile.Name()
 				}
 				SendFileToSenderRaw(ctx, msg, uri, "skip")
+				VarSetValueStr(ctx, "$t文件名字", logFileNamePrefix)
+				ReplyToSenderRaw(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_导出_成功"), "skip")
 				return CmdExecuteResult{Matched: true, Solved: true}
 			} else {
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
