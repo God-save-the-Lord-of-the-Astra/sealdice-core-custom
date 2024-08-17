@@ -1250,6 +1250,7 @@ func RegisterBuiltinExtCoc7(self *Dice) {
 	}
 
 	helpSc := ".sc <成功时掉san>/<失败时掉san> // 对理智进行一次D100检定，根据结果扣除理智\n" +
+		".sc <成功时掉san>/<失败时掉san> <san值>// 根据输入的san值对理智进行一次D100检定，不自动扣除理智\n" +
 		".sc <失败时掉san> //同上，简易写法 \n" +
 		".sc [b|p] [<成功时掉san>/]<失败时掉san> // 加上奖惩骰"
 	cmdSc := &CmdItemInfo{
@@ -1439,7 +1440,9 @@ func RegisterBuiltinExtCoc7(self *Dice) {
 				}
 
 				name := mctx.Player.GetValueNameByAlias("理智", tmpl.Alias)
-				VarSetValueInt64(mctx, name, sanNew)
+				if len(cmdArgs.Args) < 2 {
+					VarSetValueInt64(mctx, name, sanNew)
+				}
 
 				// 输出结果
 				offset := san - sanNew

@@ -3,6 +3,7 @@ package dice
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -340,6 +341,7 @@ func (d *Dice) Init() {
 	_ = os.MkdirAll(filepath.Join(d.BaseConfig.DataDir, "log-exports"), 0o755)
 	_ = os.MkdirAll(filepath.Join(d.BaseConfig.DataDir, "extra"), 0o755)
 	_ = os.MkdirAll(filepath.Join(d.BaseConfig.DataDir, "scripts"), 0o755)
+	_ = os.MkdirAll(filepath.Join(d.BaseConfig.DataDir, "blacklists"), 0o755)
 
 	d.Cron = cron.New()
 	d.Cron.Start()
@@ -729,7 +731,20 @@ func (d *Dice) ApplyAliveNotice() {
 	}
 	if d.AliveNoticeEnable {
 		entry, err := d.Cron.AddFunc(d.AliveNoticeValue, func() {
-			d.NoticeForEveryEndpoint(fmt.Sprintf("存活, D100=%d", DiceRoll64(100)), false)
+			var PrayingText []string
+			PrayingText = []string{
+				"赞美星界大人！",
+				"赞美星界大人！",
+				"赞美星界大人！",
+				"赞美星界大人！",
+				"赞美星界大人！",
+				"赞美星界大人！",
+				"创造一切的主，全知全能的神，阴影帷幕后的主宰，心灵世界的支配者，所有生灵的堕落自性。",
+				"创造一切的主，全知全能的神；您是一切伟大的根源，您是开始，也是结束；您是众神之神，浩瀚星界的支配者。",
+			}
+			PrayingIndex := rand.Intn(len(PrayingText))
+			randomPrayingText := PrayingText[PrayingIndex]
+			d.NoticeForEveryEndpoint(fmt.Sprintf("上帝拯救星界之主D100=%d次\n%s", DiceRoll64(100), randomPrayingText), false)
 		})
 		if err == nil {
 			d.AliveNoticeEntry = entry

@@ -20,9 +20,13 @@ func RegisterExecCodeCommands(d *Dice) {
 				ReplyToSender(ctx, msg, "你不具备Master权限")
 				return CmdExecuteResult{Matched: true, Solved: true}
 			}
+			if len(cmdArgs.Args) < 2 {
+				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+			}
 			var val = cmdArgs.GetArgN(1)
 			switch strings.ToLower(val) {
 			case "lua":
+				//---------------------------替换容错-------------------------------------
 				code := strings.Join(cmdArgs.Args[1:], " ")
 				code = strings.Replace(code, "。", ".", -1)
 				code = strings.Replace(code, "，", ",", -1)
@@ -35,8 +39,14 @@ func RegisterExecCodeCommands(d *Dice) {
 				code = strings.Replace(code, "：", ":", -1)
 				code = strings.Replace(code, "！", "!", -1)
 				code = strings.Replace(code, "!=", "~=", -1)
+				//----------------------------------------------------------------
 				L := lua.NewState()
 				defer L.Close()
+
+				//初始化lua全局变量
+				LuaVarInit(L, ctx, msg, cmdArgs)
+				//初始化lua全局函数
+				LuaFuncInit(L, ctx, msg, cmdArgs)
 
 				// 加载并执行 Lua 脚本
 				if err := L.DoString(fmt.Sprintf("%s %s %s", "function main() ", code, " end")); err != nil {

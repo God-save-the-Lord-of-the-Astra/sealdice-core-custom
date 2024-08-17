@@ -50,8 +50,10 @@ type warningMessage struct {
 	Wid       int64  `json:"wid"`
 	Type      string `json:"type"`
 	Danger    int    `json:"danger"`
-	FromGroup int64  `json:"fromGID"`
-	FromQQ    int64  `json:"fromUID"`
+	FromGroup int64  `json:"fromGroup"`
+	FromGID   int64  `json:"fromGID"`
+	FromQQ    int64  `json:"fromQQ"`
+	FromUID   int64  `json:"fromUID"`
 	InviterQQ int64  `json:"inviterQQ"`
 	Time      string `json:"time"`
 	Note      string `json:"note"`
@@ -486,7 +488,7 @@ func (d *Dice) registerCoreCommands() {
 	//-----------------------------云黑对接-----------------------------------
 
 	//--------------------------------接收溯洄系骰子自动生成的warning----------------------------------------
-	helpForShikiWarning := "溯洄云黑播报处理"
+	helpForShikiWarning := "溯洄warning播报处理"
 	cmdShikiWarning := &CmdItemInfo{
 		Name:      "warning",
 		ShortHelp: helpForShikiWarning,
@@ -498,7 +500,7 @@ func (d *Dice) registerCoreCommands() {
 			}
 
 			// 解析警告信息
-			warningInformation := strings.Join(cmdArgs.Args, "")
+			warningInformation := cmdArgs.RawArgs
 			var warningStruct warningMessage
 			err := json.Unmarshal([]byte(warningInformation), &warningStruct)
 			if err != nil {
@@ -535,10 +537,28 @@ func (d *Dice) registerCoreCommands() {
 						item.Score = 0
 						item.Rank = BanRankNormal
 					}
-					retMes += fmt.Sprintf("已将%s移除黑名单✓", warningEventGroup)
+					retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventGroup)
+				}
+				if warningStruct.FromGID != 0 {
+					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGID)
+					item, ok := d.BanList.GetByID(warningEventGroup)
+					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+						item.Score = 0
+						item.Rank = BanRankNormal
+					}
+					retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventGroup)
 				}
 				if warningStruct.FromQQ != 0 {
 					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
+					item, ok := d.BanList.GetByID(warningEventQQ)
+					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+						item.Score = 0
+						item.Rank = BanRankNormal
+					}
+					retMes += fmt.Sprintf("已将%s移除黑名单✓", warningEventQQ)
+				}
+				if warningStruct.FromUID != 0 {
+					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromUID)
 					item, ok := d.BanList.GetByID(warningEventQQ)
 					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
 						item.Score = 0
