@@ -519,9 +519,25 @@ func (d *Dice) registerCoreCommands() {
 					}
 					retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
 				}
-
+				if warningStruct.FromGID != 0 {
+					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGID)
+					item, ok := d.BanList.GetByID(warningEventGroup)
+					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+						d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+					}
+					retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
+				}
 				if warningStruct.FromQQ != 0 {
 					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
+					item, ok := d.BanList.GetByID(warningEventQQ)
+					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+						d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+					}
+					retMes += fmt.Sprintf("已将%s加入黑名单✓", warningEventQQ)
+				}
+
+				if warningStruct.FromUID != 0 {
+					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromUID)
 					item, ok := d.BanList.GetByID(warningEventQQ)
 					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
 						d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
