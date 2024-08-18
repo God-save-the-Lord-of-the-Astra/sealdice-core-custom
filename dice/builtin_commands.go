@@ -72,6 +72,7 @@ func (d *Dice) registerCoreCommands() {
 		".ban rm <统一ID> //同上\n" +
 		".ban list // 展示列表\n" +
 		".ban list ban/warn/trust //只显示被禁用/被警告/信任用户\n" +
+		".ban import <统一ID> <统一ID> ... //批量导入黑名单\n" +
 		".ban trust <统一ID> //添加信任\n" +
 		".ban query <统一ID> //查看指定用户拉黑情况\n" +
 		".ban help //查看帮助\n" +
@@ -81,7 +82,7 @@ func (d *Dice) registerCoreCommands() {
 		ShortHelp: helpForBlack,
 		Help:      "黑名单指令:\n" + helpForBlack,
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
-			cmdArgs.ChopPrefixToArgsWith("add", "rm", "del", "list", "show", "find", "trust")
+			cmdArgs.ChopPrefixToArgsWith("add", "rm", "del", "list", "show", "find", "trust", "import")
 			if ctx.PrivilegeLevel < 100 {
 				ReplyToSender(ctx, msg, "你不具备Master权限")
 				return CmdExecuteResult{Matched: true, Solved: true}
@@ -143,6 +144,28 @@ func (d *Dice) registerCoreCommands() {
 
 				d.BanList.SetTrustByID(uid, "骰主指令", "骰主指令")
 				ReplyToSender(ctx, msg, fmt.Sprintf("已将用户/群组 %s 加入信任列表", uid))
+			case "import":
+				BlackUIDCnt := 0
+				for _, uid := range cmdArgs.Args[2:] {
+					if strings.Contains(uid, "QQ:") {
+						BlackUIDCnt++
+						item, ok := d.BanList.GetByID(uid)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(uid, d.BanList.ThresholdBan, "骰主指令", "骰主指令，黑名单批量导入", ctx)
+						}
+
+					}
+					if strings.Contains(uid, "QQ-Group:") {
+						BlackUIDCnt++
+						item, ok := d.BanList.GetByID(uid)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(uid, d.BanList.ThresholdBan, "骰主指令", "骰主指令，黑名单批量导入", ctx)
+						}
+					}
+
+				}
+				ReplyToSender(ctx, msg, fmt.Sprintf("已导入 %d 个黑名单用户/群组", BlackUIDCnt))
+
 			case "list", "show":
 				// ban/warn/trust
 				var extra, text string
@@ -453,11 +476,13 @@ func (d *Dice) registerCoreCommands() {
 						item, ok := d.BanList.GetByID(qqTobeBlack)
 						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
 							d.BanList.AddScoreBase(qqTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+							blackQQNewCnt++
 						}
 						blackQQCnt++
 						item, ok = d.BanList.GetByID(groupTobeBlack)
 						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
 							d.BanList.AddScoreBase(groupTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+							blackGroupNewCnt++
 						}
 						blackGroupCnt++
 
@@ -467,12 +492,14 @@ func (d *Dice) registerCoreCommands() {
 						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
 							item.Score = 0
 							item.Rank = BanRankNormal
+							erasedNewCnt++
 						}
 						item, ok = d.BanList.GetByID(groupTobeBlack)
 						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
 							item.Score = 0
 							item.Rank = BanRankNormal
 						}
+
 					}
 				}
 				ReplyToSender(ctx, msg, fmt.Sprintf("共计从溯洄云黑api获取黑名单群组:%d个，新增:%d个；黑名单用户:%d名，新增:%d名。并有%d组已在云端消除黑名单记录，新增%d组。", blackGroupCnt, blackGroupNewCnt, blackQQCnt, blackQQNewCnt, erasedCnt, erasedNewCnt))
@@ -1015,6 +1042,76 @@ func (d *Dice) registerCoreCommands() {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:骰子保存设置"))
 					return CmdExecuteResult{Matched: true, Solved: true}
 				}
+			} else {
+				inGroup := msg.MessageType == "group"
+
+				if inGroup {
+					// 不响应裸指令选项
+					if len(cmdArgs.At) < 1 && ctx.Dice.IgnoreUnaddressedBotCmd {
+						return CmdExecuteResult{Matched: true, Solved: false}
+					}
+					// 不响应at其他人
+					if cmdArgs.SomeoneBeMentionedButNotMe {
+						return CmdExecuteResult{Matched: true, Solved: false}
+					}
+				}
+
+				if cmdArgs.SomeoneBeMentionedButNotMe {
+					return CmdExecuteResult{Matched: false, Solved: false}
+				}
+
+				activeCount := 0
+				serveCount := 0
+				// Pinenutn: Range模板 ServiceAtNew重构代码
+				d.ImSession.ServiceAtNew.Range(func(_ string, gp *GroupInfo) bool {
+					// Pinenutn: ServiceAtNew重构
+					if gp.GroupID != "" &&
+						!strings.HasPrefix(gp.GroupID, "PG-") &&
+						gp.DiceIDExistsMap.Exists(ctx.EndPoint.UserID) {
+						serveCount++
+						if gp.DiceIDActiveMap.Exists(ctx.EndPoint.UserID) {
+							activeCount++
+						}
+					}
+					return true
+				})
+
+				onlineVer := ""
+				/*if d.Parent.AppVersionOnline != nil {
+					ver := d.Parent.AppVersionOnline
+					// 如果当前不是最新版，那么提示
+					if ver.VersionLatestCode != VERSION_CODE {
+						onlineVer = "\n最新版本: " + ver.VersionLatestDetail + "\n"
+					}
+				}*/
+				addonText := "God save the Lord of Astra"
+				var groupWorkInfo, activeText string
+				if inGroup {
+					activeText = "关闭"
+					if ctx.Group.IsActive(ctx) {
+						activeText = "开启"
+					}
+					groupWorkInfo = "\n群内工作状态: " + activeText
+				}
+
+				VarSetValueInt64(ctx, "$t供职群数", int64(serveCount))
+				VarSetValueInt64(ctx, "$t启用群数", int64(activeCount))
+				VarSetValueStr(ctx, "$t群内工作状态", groupWorkInfo)
+				VarSetValueStr(ctx, "$t群内工作状态_仅状态", activeText)
+				ver := VERSION.String()
+				arch := runtime.GOARCH
+				if arch != "386" && arch != "amd64" {
+					ver = fmt.Sprintf("%s %s", ver, arch)
+				}
+				baseText := fmt.Sprintf("SealDice %s%s\n%s", ver, onlineVer, addonText)
+				extText := DiceFormatTmpl(ctx, "核心:骰子状态附加文本")
+				if extText != "" {
+					extText = "\n" + extText
+				}
+				text := baseText + extText
+
+				ReplyToSender(ctx, msg, text)
+
 			}
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},
@@ -1062,14 +1159,13 @@ func (d *Dice) registerCoreCommands() {
 			})
 
 			onlineVer := ""
-			/*if d.Parent.AppVersionOnline != nil {
+			if d.Parent.AppVersionOnline != nil {
 				ver := d.Parent.AppVersionOnline
 				// 如果当前不是最新版，那么提示
 				if ver.VersionLatestCode != VERSION_CODE {
 					onlineVer = "\n最新版本: " + ver.VersionLatestDetail + "\n"
 				}
-			}*/
-			addonText := "God save the Lord of Astra"
+			}
 			var groupWorkInfo, activeText string
 			if inGroup {
 				activeText = "关闭"
@@ -1088,7 +1184,7 @@ func (d *Dice) registerCoreCommands() {
 			if arch != "386" && arch != "amd64" {
 				ver = fmt.Sprintf("%s %s", ver, arch)
 			}
-			baseText := fmt.Sprintf("SealDice %s%s\n%s", ver, onlineVer, addonText)
+			baseText := fmt.Sprintf("SealDice %s%s\n%s", ver, onlineVer)
 			extText := DiceFormatTmpl(ctx, "核心:骰子状态附加文本")
 			if extText != "" {
 				extText = "\n" + extText
