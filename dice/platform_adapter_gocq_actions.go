@@ -593,85 +593,13 @@ func (pa *PlatformAdapterGocq) QuitGroup(_ *MsgContext, id string) {
 	socketSendText(pa.Socket, string(a))
 }
 
-// MemberBan 禁言群成员
-func (pa *PlatformAdapterGocq) MemberBan(groupID string, userID string, duration int64) {
-	type BanParams struct {
-		GroupID  int64  `json:"group_id"`
-		UserID   int64  `json:"user_id"`
-		Duration uint32 `json:"duration"`
-	}
+func (pa *PlatformAdapterGocq) MemberBan(_ string, _ string, _ int64) {}
 
-	realGroupID, idType := pa.mustExtractID(groupID)
-	if idType != QQUidGroup {
-		return
-	}
-
-	realUserID, idType := pa.mustExtractID(userID)
-	if idType != QQUidPerson {
-		return
-	}
-	echo := pa.getCustomEcho()
-	a, _ := json.Marshal(oneBotCommand{
-		"set_group_ban",
-		BanParams{
-			GroupID:  realGroupID,
-			UserID:   realUserID,
-			Duration: uint32(duration),
-		},
-		echo,
-	})
-	socketSendText(pa.Socket, string(a))
-}
-
-// MemberKick 踢出群成员
-func (pa *PlatformAdapterGocq) MemberKick(groupID string, userID string, rejectAddRequest bool) {
-	type KickParams struct {
-		GroupID          int64 `json:"group_id"`
-		UserID           int64 `json:"user_id"`
-		RejectAddRequest bool  `json:"reject_add_request"`
-	}
-
-	realGroupID, idType := pa.mustExtractID(groupID)
-	if idType != QQUidGroup {
-		return
-	}
-
-	realUserID, idType := pa.mustExtractID(userID)
-	if idType != QQUidPerson {
-		return
-	}
-	echo := pa.getCustomEcho()
-	a, _ := json.Marshal(oneBotCommand{
-		"set_group_kick",
-		KickParams{
-			GroupID:          realGroupID,
-			UserID:           realUserID,
-			RejectAddRequest: rejectAddRequest,
-		},
-		echo,
-	})
-	socketSendText(pa.Socket, string(a))
-}
+func (pa *PlatformAdapterGocq) MemberKick(_ string, _ string) {}
 
 func (pa *PlatformAdapterGocq) EditMessage(_ *MsgContext, _, _ string) {}
 
-// RecallMessage 撤回消息
-func (pa *PlatformAdapterGocq) RecallMessage(ctx *MsgContext, messageID string) {
-	type RecallParams struct {
-		MessageID int32 `json:"message_id"`
-	}
-
-	realMessageID, _ := strconv.ParseInt(messageID, 10, 32)
-	echo := pa.getCustomEcho()
-	a, _ := json.Marshal(oneBotCommand{
-		"delete_msg",
-		RecallParams{
-			MessageID: int32(realMessageID),
-		},
-		echo,
-	})
-	socketSendText(pa.Socket, string(a))
-}
+func (pa *PlatformAdapterGocq) RecallMessage(_ *MsgContext, _ string) {}
 
 func (pa *PlatformAdapterGocq) GetLoginInfo() {
 	a, _ := json.Marshal(struct {
