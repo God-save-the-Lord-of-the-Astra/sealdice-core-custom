@@ -296,6 +296,8 @@ func RegisterBuiltinExtLog(self *Dice) {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_关闭_失败"))
 					return CmdExecuteResult{Matched: true, Solved: true}
 				}
+				lines, _ := model.LogLinesCountGet(ctx.Dice.DBLogs, group.GroupID, group.LogCurName)
+				VarSetValueInt64(ctx, "$t当前记录条数", lines)
 
 				VarSetValueStr(ctx, "$t记录名称", group.LogCurName)
 				text := DiceFormatTmpl(ctx, "日志:记录_结束")
@@ -314,6 +316,8 @@ func RegisterBuiltinExtLog(self *Dice) {
 				return CmdExecuteResult{Matched: true, Solved: true}
 			} else if cmdArgs.IsArgEqual(1, "halt") {
 				if len(group.LogCurName) > 0 {
+					lines, _ := model.LogLinesCountGet(ctx.Dice.DBLogs, group.GroupID, group.LogCurName)
+					VarSetValueInt64(ctx, "$t当前记录条数", lines)
 					VarSetValueStr(ctx, "$t记录名称", group.LogCurName)
 				}
 				text := DiceFormatTmpl(ctx, "日志:记录_结束")
@@ -539,7 +543,6 @@ func RegisterBuiltinExtLog(self *Dice) {
 
 	helpOb := `.ob // 进入ob模式
 .ob exit // 退出ob
-.stat help // 帮助
 `
 	cmdOb := &CmdItemInfo{
 		Name:          "ob",
@@ -630,8 +633,10 @@ func RegisterBuiltinExtLog(self *Dice) {
 				if errors.Is(err, ErrGroupCardOverlong) {
 					return handleOverlong(ctx, msg, text)
 				}
+				VarSetValueStr(ctx, "$t名片格式", val)
+				VarSetValueStr(ctx, "$t名片预览", text)
 				// 玩家 SAN60 HP10/10 DEX65
-				ReplyToSender(ctx, msg, "已自动设置名片为COC7格式: "+text+"\n如有权限会持续自动改名片。使用.sn off可关闭")
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:名片_自动设置"))
 			case "dnd", "dnd5e":
 				// PW{pw}
 				ctx.Player.AutoSetNameTemplate = "{$t玩家_RAW} HP{hp}/{hpmax} AC{ac} DC{dc} PP{pp}"
@@ -640,8 +645,10 @@ func RegisterBuiltinExtLog(self *Dice) {
 				if errors.Is(err, ErrGroupCardOverlong) {
 					return handleOverlong(ctx, msg, text)
 				}
+				VarSetValueStr(ctx, "$t名片格式", val)
+				VarSetValueStr(ctx, "$t名片预览", text)
 				// 玩家 HP10/10 AC15 DC15 PW10
-				ReplyToSender(ctx, msg, "已自动设置名片为DND5E格式: "+text+"\n如有权限会持续自动改名片。使用.sn off可关闭")
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:名片_自动设置"))
 			case "none":
 				ctx.Player.AutoSetNameTemplate = "{$t玩家_RAW}"
 				ctx.Player.UpdatedAtTime = time.Now().Unix()
@@ -1086,12 +1093,12 @@ func LogRollBriefByPC(ctx *MsgContext, items []*model.LogOneItem, showAll bool, 
 					}
 					continue
 				case "st":
-					items, ok2 := info["items"].([]interface{})
+					items, ok2 := info["items"].([]any)
 					if !ok2 {
 						continue
 					}
 					for _, _j := range items {
-						j, ok2 := _j.(map[string]interface{})
+						j, ok2 := _j.(map[string]any)
 						if !ok2 {
 							continue
 						}

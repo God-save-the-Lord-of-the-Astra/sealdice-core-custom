@@ -1017,6 +1017,13 @@ func (d *Dice) registerCoreCommands() {
 					}
 
 					if ctx.PrivilegeLevel < 40 {
+						if !cmdArgs.AmIBeMentioned {
+							// 裸指令，如果当前群内开启，予以提示
+							if ctx.IsCurGroupBotOn {
+								ReplyToSender(ctx, msg, "[退群指令] 请@我使用这个命令，以进行确认")
+							}
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
 						ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:提示_无权限_非master/管理"))
 						return CmdExecuteResult{Matched: true, Solved: true}
 					}

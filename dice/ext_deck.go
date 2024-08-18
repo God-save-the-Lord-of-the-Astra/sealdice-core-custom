@@ -984,7 +984,7 @@ func executeDeck(ctx *MsgContext, deckInfo *DeckInfo, deckName string, shufflePo
 		if pool == nil {
 			return "", errors.New("牌组为空，可能尚未加载完成")
 		}
-		key = pool.Pick().(string)
+
 	} else {
 		deckGroup := getDeckGroup(deckInfo, deckName)
 		if len(deckGroup) == 0 {

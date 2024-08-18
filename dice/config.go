@@ -2213,7 +2213,7 @@ func (d *Dice) loads() {
 			err := json.Unmarshal(data, &groupInfo)
 			if err == nil {
 				groupInfo.GroupID = id
-				groupInfo.UpdatedAtTime = updatedAt
+				groupInfo.UpdatedAtTime = 0
 
 				// 找出其中以群号开头的，这是1.2版本的bug
 				var toDelete []string
