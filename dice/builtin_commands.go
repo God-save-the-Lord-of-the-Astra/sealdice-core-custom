@@ -1191,7 +1191,7 @@ func (d *Dice) registerCoreCommands() {
 			if arch != "386" && arch != "amd64" {
 				ver = fmt.Sprintf("%s %s", ver, arch)
 			}
-			baseText := fmt.Sprintf("SealDice %s%s\n%s", ver, onlineVer)
+			baseText := fmt.Sprintf("SealDice %s%s", ver, onlineVer)
 			extText := DiceFormatTmpl(ctx, "核心:骰子状态附加文本")
 			if extText != "" {
 				extText = "\n" + extText
