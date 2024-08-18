@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
@@ -156,6 +157,14 @@ type singleRoulette struct {
 	Face int64
 	Time int
 	Pool []int
+}
+
+func pingWebsite(url string) (string, error) {
+	chcpCmd := exec.Command("cmd", "/C", "chcp 65001")
+	chcpCmd.Run()
+	cmd := exec.Command("ping", "-w", "250", url)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
 }
 
 var rouletteMap SyncMap[string, singleRoulette]
@@ -387,21 +396,28 @@ func RegisterBuiltinExtFun(self *Dice) {
 
 	cmdPing := CmdItemInfo{
 		Name:      "ping",
-		ShortHelp: ".ping // 触发发送一条回复",
+		ShortHelp: ".ping <网站名称> // 触发发送一条回复",
 		Help:      "触发回复:\n触发发送一条回复。特别地，如果是qq官方bot，并且是在频道中触发，会以私信消息形式回复",
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
-			if cmdArgs.IsArgEqual(1, "help") {
-				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
-			}
 
-			if msg.Platform == "OpenQQCH" &&
-				strings.HasPrefix(msg.GuildID, "OpenQQCH-Guild:") &&
-				strings.HasPrefix(msg.GroupID, "OpenQQCH-Channel:") {
-				// 从 official qq 的频道触发的，就触发私信的回复
-				ReplyPerson(ctx, msg, DiceFormatTmpl(ctx, "其它:ping响应"))
-			} else {
-				// 其它的情况就直接回复
+			val := cmdArgs.GetArgN(1)
+			switch strings.ToLower(val) {
+			case "help":
+				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+			case "baidu":
+				ReplyToSender(ctx, msg, "正在向目标网站发起请求")
+				pingReturn, _ := pingWebsite("www.baidu.com")
+				time.Sleep(2 * time.Second)
+				VarSetValueStr(ctx, "$t请求结果", pingReturn)
 				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "其它:ping响应"))
+			case "github":
+				ReplyToSender(ctx, msg, "正在向目标网站发起请求")
+				pingReturn, _ := pingWebsite("www.github.com")
+				time.Sleep(2 * time.Second)
+				VarSetValueStr(ctx, "$t请求结果", pingReturn)
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "其它:ping响应"))
+			default:
+				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},

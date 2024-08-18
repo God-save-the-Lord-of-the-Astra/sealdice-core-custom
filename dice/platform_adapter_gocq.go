@@ -627,59 +627,73 @@ func (pa *PlatformAdapterGocq) Serve() int {
 			return
 		}
 
-		// 好友请求
 		if msgQQ.PostType == "request" && msgQQ.RequestType == "friend" { //nolint:nestif
-			// 有一个来自gocq的重发问题
-			lastTime := tempFriendInviteSent[msgQQ.Flag]
-			nowTime := time.Now().Unix()
+			// 如果收到的是好友请求
+
+			// 检查是否有重复的好友邀请请求
+			lastTime := tempFriendInviteSent[msgQQ.Flag] // 获取上一次收到该请求的时间
+			nowTime := time.Now().Unix()                 // 获取当前时间的 Unix 时间戳
 			if nowTime-lastTime < 20*60 {
-				// 保留20s
+				// 如果两次请求的时间间隔小于 20 分钟，则忽略此次请求
 				return
 			}
-			tempFriendInviteSent[msgQQ.Flag] = nowTime
+			tempFriendInviteSent[msgQQ.Flag] = nowTime // 更新最后一次收到该请求的时间
 
-			// {"comment":"123","flag":"1647619872000000","post_type":"request","request_type":"friend","self_id":222,"time":1647619871,"user_id":111}
+			// 解析请求中的验证信息
 			var comment string
 			if msgQQ.Comment != "" {
-				comment = strings.TrimSpace(msgQQ.Comment)
-				comment = strings.ReplaceAll(comment, "\u00a0", "")
+				comment = strings.TrimSpace(msgQQ.Comment)          // 去除验证信息的首尾空白字符
+				comment = strings.ReplaceAll(comment, "\u00a0", "") // 移除验证信息中的特殊空格字符
 			}
 
+			// 获取预期的验证信息
 			toMatch := strings.TrimSpace(session.Parent.FriendAddComment)
-			willAccept := comment == DiceFormat(ctx, toMatch)
+			var willAccept bool
+
 			if toMatch == "" {
-				willAccept = true
+				willAccept = true // 如果没有预期的验证信息，则自动接受
+			} else {
+				// 使用正则表达式进行匹配
+				re, err := regexp.Compile(DiceFormat(ctx, toMatch))
+				if err != nil {
+					willAccept = false
+				} else {
+					willAccept = re.MatchString(comment) // 验证信息是否匹配正则表达式
+				}
 			}
 
 			if !willAccept {
-				// 如果是问题校验，只填写回答即可
+				// 如果验证信息不匹配，尝试从验证信息中提取回答
 				re := regexp.MustCompile(`\n回答:([^\n]+)`)
 				m := re.FindAllStringSubmatch(comment, -1)
 
 				var items []string
 				for _, i := range m {
-					items = append(items, i[1])
+					items = append(items, i[1]) // 提取所有回答
 				}
 
+				// 使用正则表达式分割预期的验证信息
 				re2 := regexp.MustCompile(`\s+`)
 				m2 := re2.Split(toMatch, -1)
 
 				if len(m2) == len(items) {
 					ok := true
 					for i := 0; i < len(m2); i++ {
-						if m2[i] != items[i] {
+						// 使用正则表达式进行匹配
+						reItem, err := regexp.Compile(m2[i])
+						if err != nil || !reItem.MatchString(items[i]) {
 							ok = false
 							break
 						}
 					}
-					willAccept = ok
+					willAccept = ok // 如果提取的回答与预期的验证信息一致，则接受请求
 				}
 			}
 
 			if comment == "" {
-				comment = "(无)"
+				comment = "(无)" // 如果验证信息为空，则标记为“(无)”
 			} else {
-				comment = strconv.Quote(comment)
+				comment = strconv.Quote(comment) // 否则对验证信息进行转义
 			}
 
 			// 检查黑名单
@@ -693,29 +707,31 @@ func (pa *PlatformAdapterGocq) Serve() int {
 					} else {
 						extra = "。回答错误，且为被禁止用户，准备自动拒绝"
 					}
-					willAccept = false
+					willAccept = false // 如果用户在黑名单中，则拒绝请求
 				}
 			}
 
 			if pa.IgnoreFriendRequest {
-				extra += "。由于设置了忽略邀请，此信息仅为通报"
+				extra += "。由于设置了忽略邀请，此信息仅为通报" // 如果设置了忽略好友请求，则仅记录信息
 			}
 
-			txt := fmt.Sprintf("收到QQ好友邀请: 邀请人:%s, 验证信息: %s, 是否自动同意: %t%s", msgQQ.UserID, comment, willAccept, extra)
+			// 记录收到的好友邀请请求
+			txt := fmt.Sprintf("收到QQ好友邀请: 邀请人:%s, 验证信息: \n%s, 是否自动同意: \n%t%s", msgQQ.UserID, comment, willAccept, extra)
 			log.Info(txt)
 			ctx.Notice(txt)
 
-			// 忽略邀请
+			// 如果设置了忽略好友请求，则不处理请求
 			if pa.IgnoreFriendRequest {
 				return
 			}
 
+			// 等待一段随机时间后处理请求
 			time.Sleep(time.Duration((0.8 + rand.Float64()) * float64(time.Second)))
 
 			if willAccept {
-				pa.SetFriendAddRequest(msgQQ.Flag, true, "", "")
+				pa.SetFriendAddRequest(msgQQ.Flag, true, "", "") // 接受好友请求
 			} else {
-				pa.SetFriendAddRequest(msgQQ.Flag, false, "", "验证信息不符")
+				pa.SetFriendAddRequest(msgQQ.Flag, false, "", "验证信息不符") // 拒绝好友请求
 			}
 			return
 		}
