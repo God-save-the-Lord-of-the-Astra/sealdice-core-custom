@@ -715,10 +715,10 @@ func _MsgCreate(messageType string, message string) *Message {
 	groupName := ""
 	groupRole := ""
 	if messageType == "group" {
-		userID = "UI:1002"
+		userID = "UI:1101"
 		messageType = "group"
-		groupID = "UI-Group:2001"
-		groupName = "UI-Group 2001"
+		groupID = "UI-Group:2101"
+		groupName = "UI-Group 2101"
 		groupRole = "owner"
 	}
 
@@ -750,6 +750,7 @@ func TextMapCompatibleCheck(d *Dice, category, k string, textItems []TextTemplat
 
 		// 注: 由于选择了真正执行一遍的方式，可能会有部分影响溢出导致修改到测试用户的数据
 		// 但是这个测试用户是 UI:1001 所以姑且认为没有问题
+
 		ctx := CreateTempCtx(d.UIEndpoint, msg)
 		ctx.CreateVmIfNotExists()
 		if a, exists := _textMapTestData2[key]; exists {
