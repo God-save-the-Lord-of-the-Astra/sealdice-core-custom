@@ -79,6 +79,10 @@ func DiceFormatReplyshow(key string, ctx *MsgContext, s string, srcText string) 
 	VarSetValueStr(ctx, "$t原始列表", "{$t原始列表}")
 	VarSetValueStr(ctx, "$t随机名字文本", "{$t随机名字文本}")
 	VarSetValueStr(ctx, "$t请求结果", "{$t请求结果}")
+	VarSetValueStr(ctx, "$t条数", "{$t条数}")
+	VarSetValueStr(ctx, "$t记录名称", "{$t记录名称}")
+	VarSetValueStr(ctx, "$t当前记录条数", "{$t当前记录条数}")
+
 	text := fmt.Sprintf("词条: %s\nwebui: %s\n默认: %s\n预览: %s", key, s, srcText, DiceFormatTmpl(ctx, s))
 	return text
 }
@@ -3922,6 +3926,33 @@ func (d *Dice) registerCoreCommands() {
 					}
 				}
 
+			case "logon":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_成功", `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_开启_成功"] {
+							srcText := `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`
+							d.TextMapRaw["日志"]["记录_开启_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_开启_成功"] {
+							d.TextMapRaw["日志"]["记录_开启_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
 			case "logonsuccess":
 				if cmdNum == 1 || subval == "help" {
 					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_成功", `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`)
@@ -4192,6 +4223,33 @@ func (d *Dice) registerCoreCommands() {
 					}
 				}
 
+			case "logend":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_结束", `故事落下了帷幕。\n记录已经关闭。`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_结束"] {
+							srcText := `故事落下了帷幕。\n记录已经关闭。`
+							d.TextMapRaw["日志"]["记录_结束"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_结束"] {
+							d.TextMapRaw["日志"]["记录_结束"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
 			case "logendsuccess":
 				if cmdNum == 1 || subval == "help" {
 					text := DiceFormatReplyshow(val, ctx, "日志:记录_结束", `故事落下了帷幕。\n记录已经关闭。`)
@@ -4273,6 +4331,33 @@ func (d *Dice) registerCoreCommands() {
 					}
 				}
 
+			case "logdelete":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_删除_成功", "删除记录 {$t记录名称} 成功")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_删除_成功"] {
+							srcText := "删除记录 {$t记录名称} 成功"
+							d.TextMapRaw["日志"]["记录_删除_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_删除_成功"] {
+							d.TextMapRaw["日志"]["记录_删除_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
 			case "logdeletesuccess":
 				if cmdNum == 1 || subval == "help" {
 					text := DiceFormatReplyshow(val, ctx, "日志:记录_删除_成功", "删除记录 {$t记录名称} 成功")
@@ -4346,6 +4431,249 @@ func (d *Dice) registerCoreCommands() {
 						srcText = strings.TrimSpace(srcText)
 						for index := range d.TextMapRaw["日志"]["记录_删除_失败_正在进行"] {
 							d.TextMapRaw["日志"]["记录_删除_失败_正在进行"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "obenter":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:OB_开启", "你将成为观众（自动修改昵称和群名片[如有权限]，并不会给观众发送暗骰结果）。")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["OB_开启"] {
+							srcText := "你将成为观众（自动修改昵称和群名片[如有权限]，并不会给观众发送暗骰结果）。"
+							d.TextMapRaw["日志"]["OB_开启"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["OB_开启"] {
+							d.TextMapRaw["日志"]["OB_开启"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "obexit":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:OB_关闭", "你不再是观众了（自动修改昵称和群名片[如有权限]）。")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["OB_关闭"] {
+							srcText := "你不再是观众了（自动修改昵称和群名片[如有权限]）。"
+							d.TextMapRaw["日志"]["OB_关闭"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["OB_关闭"] {
+							d.TextMapRaw["日志"]["OB_关闭"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "logupload":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_上传_成功", `跑团日志已上传服务器，链接如下：{$t日志链接}`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
+							srcText := `跑团日志已上传服务器，链接如下：{$t日志链接}`
+							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
+							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "loguploadsuccess":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_上传_成功", `跑团日志已上传服务器，链接如下：{$t日志链接}`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
+							srcText := `跑团日志已上传服务器，链接如下：{$t日志链接}`
+							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
+							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "loguploadfail":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_上传_失败", `跑团日志上传失败：{$t错误原因}\n若未出现线上日志地址，可换时间重试，或联系骰主在data/default/log-exports路径下取出日志\n文件名: 群号_日志名_随机数.zip\n注意此文件log end/get后才会生成`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_上传_失败"] {
+							srcText := `跑团日志上传失败：{$t错误原因}\n若未出现线上日志地址，可换时间重试，或联系骰主在data/default/log-exports路径下取出日志\n文件名: 群号_日志名_随机数.zip\n注意此文件log end/get后才会生成`
+							d.TextMapRaw["日志"]["记录_上传_失败"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_上传_失败"] {
+							d.TextMapRaw["日志"]["记录_上传_失败"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "logexport":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_导出_成功", `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
+							srcText := `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`
+							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
+							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "logexportsuccess":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:记录_导出_成功", `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
+							srcText := `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`
+							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
+							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "syncname":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:名片_自动设置", `已自动设置名片格式为{$t名片格式}：{$t名片预览}\n如有权限会在属性更新时自动更新名片。使用.sn off可关闭。`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["名片_自动设置"] {
+							srcText := `已自动设置名片格式为{$t名片格式}：{$t名片预览}\n如有权限会在属性更新时自动更新名片。使用.sn off可关闭。`
+							d.TextMapRaw["日志"]["名片_自动设置"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["名片_自动设置"] {
+							d.TextMapRaw["日志"]["名片_自动设置"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+
+			case "syncnamecancel":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "日志:名片_取消设置", `已关闭对{$t玩家}的名片自动修改。`)
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["日志"]["名片_取消设置"] {
+							srcText := `已关闭对{$t玩家}的名片自动修改。`
+							d.TextMapRaw["日志"]["名片_取消设置"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["日志"]["名片_取消设置"] {
+							d.TextMapRaw["日志"]["名片_取消设置"][index][0] = srcText
 						}
 						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
 						d.GenerateTextMap()

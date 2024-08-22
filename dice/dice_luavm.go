@@ -1,13 +1,15 @@
 package dice
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 )
 
-func LuaVarInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) {
+func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) {
 	/*//----------------------------------------------------------------
 	msgTable := LuaVM.NewTable()
 
@@ -365,6 +367,12 @@ func LuaVarInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdAr
 
 	LuaVM.SetGlobal("cmdArgs", cmdArgsUD)
 
+	DiceUD := LuaVM.NewUserData()
+	DiceUD.Value = d
+	DiceMeta := LuaVM.NewTypeMetatable("Dice")
+	LuaVM.SetGlobal("Dice", DiceMeta)
+	LuaVM.SetGlobal("d", DiceUD)
+
 	//----------------------------------------------------------------
 	// Shiki散装变量兼容
 	ShikiMsgTable := LuaVM.NewTable()
@@ -393,38 +401,30 @@ func LuaVarInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdAr
 
 // ----------------------------------------------------------------
 func luaVarSetValueStr(LuaVM *lua.LState) int {
-	ud := LuaVM.GetGlobal("ctx_ud").(*lua.LUserData)
-	ctx := ud.Value.(*MsgContext)
-
-	s := LuaVM.ToString(1)
-	v := LuaVM.ToString(2)
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	s := LuaVM.ToString(2)
+	v := LuaVM.ToString(3)
 	VarSetValueStr(ctx, s, v)
 	return 0 // 返回 0 表示无返回值
 }
 
 func luaVarSetValueInt(LuaVM *lua.LState) int {
-	ud := LuaVM.GetGlobal("ctx_ud").(*lua.LUserData)
-	ctx := ud.Value.(*MsgContext)
-
-	s := LuaVM.ToString(1)
-	v := LuaVM.ToInt64(2)
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	s := LuaVM.ToString(2)
+	v := LuaVM.ToInt64(3)
 	VarSetValueInt64(ctx, s, v)
 	return 0 // 返回 0 表示无返回值
 }
 
 func luaVarDelValue(LuaVM *lua.LState) int {
-	ud := LuaVM.GetGlobal("ctx_ud").(*lua.LUserData)
-	ctx := ud.Value.(*MsgContext)
-
-	s := LuaVM.ToString(1)
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	s := LuaVM.ToString(2)
 	VarDelValue(ctx, s)
 	return 0 // 返回 0 表示无返回值
 }
 
 func luaVarGetValueInt(LuaVM *lua.LState) int {
-	ud := LuaVM.GetGlobal("ctx_ud").(*lua.LUserData)
-	ctx := ud.Value.(*MsgContext)
-
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
 	s := LuaVM.ToString(1)
 	res, exists := VarGetValueInt64(ctx, s)
 	if !exists {
@@ -435,10 +435,8 @@ func luaVarGetValueInt(LuaVM *lua.LState) int {
 }
 
 func luaVarGetValueStr(LuaVM *lua.LState) int {
-	ud := LuaVM.GetGlobal("ctx_ud").(*lua.LUserData)
-	ctx := ud.Value.(*MsgContext)
-
-	s := LuaVM.ToString(1)
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	s := LuaVM.ToString(2)
 	res, exists := VarGetValueStr(ctx, s)
 	if !exists {
 		return 0 // 返回 0 表示没有值
@@ -447,22 +445,165 @@ func luaVarGetValueStr(LuaVM *lua.LState) int {
 	return 1                     // 返回 1 表示成功
 }
 
-func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) {
-	ctxUerData := LuaVM.NewUserData()
-	ctxUerData.Value = ctx
-	msgUerData := LuaVM.NewUserData()
-	msgUerData.Value = msg
-	cmdArgsUerData := LuaVM.NewUserData()
-	cmdArgsUerData.Value = cmdArgs
-	LuaVM.SetGlobal("ctx_ud", ctxUerData)
-	LuaVM.SetGlobal("msg_ud", msgUerData)
-	LuaVM.SetGlobal("cmdArgs_ud", cmdArgsUerData)
+func luaAddBan(LuaVM *lua.LState) int {
+	id := LuaVM.ToString(1)
+	d := LuaVM.ToUserData(2).Value.(*Dice)
+	place := LuaVM.ToString(3)
+	reason := LuaVM.ToString(4)
+	ctx := LuaVM.ToUserData(5).Value.(*MsgContext)
+	d.BanList.AddScoreBase(id, d.BanList.ThresholdBan, place, reason, ctx)
+	d.BanList.SaveChanged(d)
+	return 1 // 返回 1 表示成功
+}
 
-	// 注册函数
+func luaAddTrust(LuaVM *lua.LState) int {
+	d := LuaVM.ToUserData(1).Value.(*Dice)
+	id := LuaVM.ToString(2)
+	place := LuaVM.ToString(3)
+	reason := LuaVM.ToString(4)
+	d.BanList.SetTrustByID(id, place, reason)
+	d.BanList.SaveChanged(d)
+	return 1 // 返回 1 表示成功
+}
+
+func luaRemoveBan(LuaVM *lua.LState) int {
+	d := LuaVM.ToUserData(1).Value.(*Dice)
+	id := LuaVM.ToString(2)
+	_, ok := d.BanList.GetByID(id)
+	if !ok {
+		return 0 // 返回 0 表示没有值
+	}
+	d.BanList.DeleteByID(d, id)
+	return 1 // 返回 1 表示成功
+}
+
+func luaReplyGroup(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	msg := LuaVM.ToUserData(2).Value.(*Message)
+	text := LuaVM.ToString(3)
+	ReplyGroup(ctx, msg, text)
+	return 1 // 返回 1 表示成功
+}
+
+func luaReplyPerson(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	msg := LuaVM.ToUserData(2).Value.(*Message)
+	text := LuaVM.ToString(3)
+	ReplyPerson(ctx, msg, text)
+	return 1 // 返回 1 表示成功
+}
+
+func luaReplyToSender(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	msg := LuaVM.ToUserData(2).Value.(*Message)
+	text := LuaVM.ToString(3)
+	ReplyToSender(ctx, msg, text)
+	return 1 // 返回 1 表示成功
+}
+func luaMemberBan(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	groupID := LuaVM.ToString(2)
+	userID := LuaVM.ToString(3)
+	duration := LuaVM.ToInt64(4)
+	MemberBan(ctx, groupID, userID, duration)
+	return 1 // 返回 1 表示成功
+}
+func luaMemberKick(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	groupID := LuaVM.ToString(2)
+	userID := LuaVM.ToString(3)
+	MemberKick(ctx, groupID, userID)
+	return 1 // 返回 1 表示成功
+}
+func luaDiceFormat(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	s := LuaVM.ToString(2)
+	res := DiceFormat(ctx, s)
+	LuaVM.Push(lua.LString(res))
+	return 1 // 返回 1 表示成功
+}
+
+func luaDiceFormatTmpl(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	s := LuaVM.ToString(2)
+	res := DiceFormatTmpl(ctx, s)
+	LuaVM.Push(lua.LString(res))
+	return 1 // 返回 1 表示成功
+}
+
+func luaShikiSendMsg(LuaVM *lua.LState) int {
+	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+	msg := LuaVM.ToUserData(2).Value.(*Message)
+	text := LuaVM.ToString(3)
+	msg_fromGroup := LuaVM.ToString(4)
+	msg_fromQQ := LuaVM.ToString(5)
+	if msg_fromGroup != "" && strings.HasPrefix(msg_fromGroup, "QQ-Group:") == false {
+		msg_fromGroup = fmt.Sprintf("%s%s", "QQ-Group:", msg_fromGroup)
+	}
+	if strings.HasPrefix(msg_fromQQ, "QQ:") == false {
+		msg_fromQQ = fmt.Sprintf("%s%s", "QQ:", msg_fromQQ)
+	}
+	msg.Sender.UserID = msg_fromQQ
+	msg.GroupID = msg_fromGroup
+	if msg_fromGroup == "" {
+		ctx.IsPrivate = true
+		msg.MessageType = "private"
+		msg.Time = int64(time.Now().Unix())
+		ctx.Group, ctx.Player = GetPlayerInfoBySender(ctx, msg)
+		ReplyPerson(ctx, msg, text)
+	} else {
+		msg.Time = int64(time.Now().Unix())
+		ctx.Group, ctx.Player = GetPlayerInfoBySender(ctx, msg)
+		ReplyGroup(ctx, msg, text)
+	}
+	return 1 // 返回 1 表示成功
+}
+
+/*
+	func luaShikiEventMsg(LuaVM *lua.LState) int {
+		ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
+		msg := LuaVM.ToUserData(2).Value.(*Message)
+		cmdArgs := LuaVM.ToUserData(3).Value.(*CmdArgs)
+		text := LuaVM.ToString(4)
+		msg_fromGroup := LuaVM.ToString(5)
+		msg_fromQQ := LuaVM.ToString(6)
+		if msg_fromGroup != "" && strings.HasPrefix(msg_fromGroup, "QQ-Group:") == false {
+			msg_fromGroup = fmt.Sprintf("%s%s", "QQ-Group:", msg_fromGroup)
+		}
+		if strings.HasPrefix(msg_fromQQ, "QQ:") == false {
+			msg_fromQQ = fmt.Sprintf("%s%s", "QQ:", msg_fromQQ)
+		}
+		msg.Sender.UserID = msg_fromQQ
+		msg.GroupID = msg_fromGroup
+		if msg_fromGroup == "" {
+			ctx.IsPrivate = true
+			msg.MessageType = "private"
+			msg.Time = int64(time.Now().Unix())
+			ctx.Group, ctx.Player = GetPlayerInfoBySender(ctx, msg)
+		} else {
+			msg.Time = int64(time.Now().Unix())
+			ctx.Group, ctx.Player = GetPlayerInfoBySender(ctx, msg)
+		}
+
+		return 1 // 返回 1 表示成功
+	}
+*/
+
+func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) {
 	LuaVM.SetGlobal("VarSetValueStr", LuaVM.NewFunction(luaVarSetValueStr))
 	LuaVM.SetGlobal("VarSetValueInt", LuaVM.NewFunction(luaVarSetValueInt))
 	LuaVM.SetGlobal("VarDelValue", LuaVM.NewFunction(luaVarDelValue))
 	LuaVM.SetGlobal("VarGetValueInt", LuaVM.NewFunction(luaVarGetValueInt))
 	LuaVM.SetGlobal("VarGetValueStr", LuaVM.NewFunction(luaVarGetValueStr))
-
+	LuaVM.SetGlobal("AddBan", LuaVM.NewFunction(luaAddBan))
+	LuaVM.SetGlobal("AddTrust", LuaVM.NewFunction(luaAddTrust))
+	LuaVM.SetGlobal("RemoveBan", LuaVM.NewFunction(luaRemoveBan))
+	LuaVM.SetGlobal("ReplyGroup", LuaVM.NewFunction(luaReplyGroup))
+	LuaVM.SetGlobal("ReplyPerson", LuaVM.NewFunction(luaReplyPerson))
+	LuaVM.SetGlobal("ReplyToSender", LuaVM.NewFunction(luaReplyToSender))
+	LuaVM.SetGlobal("MemberBan", LuaVM.NewFunction(luaMemberBan))
+	LuaVM.SetGlobal("MemberKick", LuaVM.NewFunction(luaMemberKick))
+	LuaVM.SetGlobal("DiceFormat", LuaVM.NewFunction(luaDiceFormat))
+	LuaVM.SetGlobal("DiceFormatTmpl", LuaVM.NewFunction(luaDiceFormatTmpl))
+	LuaVM.SetGlobal("shikisendMsg", LuaVM.NewFunction(luaShikiSendMsg))
 }

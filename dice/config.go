@@ -1092,6 +1092,9 @@ func setupBaseTextTemplate(d *Dice) {
 			"记录_导出_邮件附言": {
 				{"log文件见附件。", 1},
 			},
+			"记录_导出_成功": {
+				{`日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`, 1},
+			},
 			"记录_删除_成功": {
 				{"删除记录 {$t记录名称} 成功", 1},
 			},
@@ -1120,9 +1123,6 @@ func setupBaseTextTemplate(d *Dice) {
 			},
 			"名片_取消设置": {
 				{`已关闭对{$t玩家}的名片自动修改。`, 1},
-			},
-			"记录_导出_成功": {
-				{`日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`, 1},
 			},
 		},
 	}
@@ -1831,6 +1831,9 @@ func setupBaseTextTemplate(d *Dice) {
 				SubType:   ".log export",
 				ExtraText: "发送的跑团log提取邮件附带的文案。",
 			},
+			"记录_导出_成功": {
+				SubType: ".log export",
+			},
 			"记录_删除_成功": {
 				SubType: ".log del",
 				Vars:    []string{"$t记录名称"},
@@ -1866,9 +1869,6 @@ func setupBaseTextTemplate(d *Dice) {
 			},
 			"名片_取消设置": {
 				SubType: ".sn",
-			},
-			"记录_导出_成功": {
-				SubType: ".log export",
 			},
 		},
 	}

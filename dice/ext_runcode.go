@@ -466,7 +466,7 @@ func RegisterExecCodeCommands(d *Dice) {
 				defer L.Close()
 
 				//初始化lua全局变量
-				LuaVarInit(L, ctx, msg, cmdArgs)
+				LuaVarInit(L, d, ctx, msg, cmdArgs)
 				//初始化lua全局函数
 				LuaFuncInit(L, ctx, msg, cmdArgs)
 
