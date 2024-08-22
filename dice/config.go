@@ -914,6 +914,9 @@ func setupBaseTextTemplate(d *Dice) {
 			"提示_无权限_非master/管理": {
 				{"你不是管理员或master", 1},
 			},
+			"提示_无权限_非master": {
+				{"你不是master", 1},
+			},
 			"提示_手动退群前缀": {
 				{"因长期不使用等原因，骰主后台操作退群", 1},
 			},
@@ -1010,7 +1013,7 @@ func setupBaseTextTemplate(d *Dice) {
 				{"{$t原始列表}", 1},
 			},
 			"抽牌_列表_没有牌组": {
-				{`呃，没有发现任何牌组`, 1},
+				{"呃，没有发现任何牌组", 1},
 			},
 			"抽牌_找不到牌组": {
 				{"找不到这个牌组", 1},
@@ -1638,6 +1641,9 @@ func setupBaseTextTemplate(d *Dice) {
 				SubType: "通用",
 			},
 			"提示_无权限_非master/管理": {
+				SubType: "通用",
+			},
+			"提示_无权限_非master": {
 				SubType: "通用",
 			},
 			"提示_手动退群前缀": {
