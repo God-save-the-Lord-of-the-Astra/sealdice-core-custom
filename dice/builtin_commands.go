@@ -82,7 +82,7 @@ func DiceFormatReplyshow(key string, ctx *MsgContext, s string, srcText string) 
 	VarSetValueStr(ctx, "$t条数", "{$t条数}")
 	VarSetValueStr(ctx, "$t记录名称", "{$t记录名称}")
 	VarSetValueStr(ctx, "$t当前记录条数", "{$t当前记录条数}")
-
+	VarSetValueStr(ctx, "$t角色名", "{$t角色名}")
 	text := fmt.Sprintf("词条: %s\nwebui: %s\n默认: %s\n预览: %s", key, s, srcText, DiceFormatTmpl(ctx, s))
 	return text
 }
@@ -2744,6 +2744,23 @@ func (d *Dice) registerCoreCommands() {
 				ctx.Group.ExtInactiveByName("reply")
 				VarSetValueStr(ctx, "$t旧群内状态", onText)
 				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:关闭自定义回复"))
+			/*case "set":
+			//CustomReplyItemType := strings.ReplaceAll(cmdArgs.GetArgN(2), "Type=", "")
+			//CustomReplyItemContent := strings.ReplaceAll(cmdArgs.GetArgN(3), "Content=", "")
+			CustomReplyFileName := "ReplyFromClient.yaml"
+			// 初始化新的配置
+			CustomReplyItemNewConfig := &ReplyConfig{
+				Enable: true,
+				Items:  make([]*ReplyItem, 1), // 初始化切片，长度为1
+			}
+
+			// 初始化第一个ReplyItem
+			CustomReplyItemNewConfig.Items[0] = &ReplyItem{
+				Enable: true,
+			}
+
+			// 保存配置
+			SaveReplyConfig(d, CustomReplyFileName, CustomReplyItemNewConfig)*/
 			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
@@ -3162,6 +3179,396 @@ func (d *Dice) registerCoreCommands() {
 						srcText = strings.TrimSpace(srcText)
 						for index := range d.TextMapRaw["核心"]["骰点_多轮"] {
 							d.TextMapRaw["核心"]["骰点_多轮"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pcnewemptycard":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_新建", "新建角色且自动绑定: {$t角色名}")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_新建"] {
+							srcText := "新建角色且自动绑定: {$t角色名}"
+							d.TextMapRaw["核心"]["角色管理_新建"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_新建"] {
+							d.TextMapRaw["核心"]["角色管理_新建"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pcnameexist":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_新建_已存在", "已存在同名角色")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_新建_已存在"] {
+							srcText := "已存在同名角色"
+							d.TextMapRaw["核心"]["角色管理_新建_已存在"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_新建_已存在"] {
+							d.TextMapRaw["核心"]["角色管理_新建_已存在"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardset":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_成功", "切换角色\"{$t角色名}\"，绑定成功")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_成功"] {
+							srcText := "切换角色\"{$t角色名}\"，绑定成功"
+							d.TextMapRaw["核心"]["角色管理_绑定_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_成功"] {
+							d.TextMapRaw["核心"]["角色管理_绑定_成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardtagnotexist":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_失败", "角色\"{$t角色名}\"绑定失败，角色不存在")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_失败"] {
+							srcText := "角色\"{$t角色名}\"绑定失败，角色不存在"
+							d.TextMapRaw["核心"]["角色管理_绑定_失败"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_失败"] {
+							d.TextMapRaw["核心"]["角色管理_绑定_失败"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccarduntag":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_解除", "角色\"{$t角色名}\"绑定已解除，切换至群内角色卡")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_解除"] {
+							srcText := "角色\"{$t角色名}\"绑定已解除，切换至群内角色卡"
+							d.TextMapRaw["核心"]["角色管理_绑定_解除"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_解除"] {
+							d.TextMapRaw["核心"]["角色管理_绑定_解除"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardnotagged":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_并未绑定", "当前群内并未绑定角色")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"] {
+							srcText := "当前群内并未绑定角色"
+							d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"] {
+							d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pcloaded":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_加载成功", "角色{$t玩家}加载成功，欢迎回来")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_加载成功"] {
+							srcText := "角色{$t玩家}加载成功，欢迎回来"
+							d.TextMapRaw["核心"]["角色管理_加载成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_加载成功"] {
+							d.TextMapRaw["核心"]["角色管理_加载成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardalreadytagged":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_加载失败_已绑定", "当前群内是绑卡状态，请解除绑卡后进行此操作！")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"] {
+							srcText := "当前群内是绑卡状态，请解除绑卡后进行此操作！"
+							d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"] {
+							d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardnotexist":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_角色不存在", "无法加载/删除角色：你所指定的角色不存在")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_角色不存在"] {
+							srcText := "无法加载/删除角色：你所指定的角色不存在"
+							d.TextMapRaw["核心"]["角色管理_角色不存在"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_角色不存在"] {
+							d.TextMapRaw["核心"]["角色管理_角色不存在"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardnotserialized":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_序列化失败", "无法加载/保存角色：序列化失败")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_序列化失败"] {
+							srcText := "无法加载/保存角色：序列化失败"
+							d.TextMapRaw["核心"]["角色管理_序列化失败"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_序列化失败"] {
+							d.TextMapRaw["核心"]["角色管理_序列化失败"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardsaved":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_储存成功", "角色\"{$t角色名}\"储存成功\n注: 非秘密团不用开团前存卡，跑团后save即可")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_储存成功"] {
+							srcText := "角色\"{$t角色名}\"储存成功\n注: 非秘密团不用开团前存卡，跑团后save即可"
+							d.TextMapRaw["核心"]["角色管理_储存成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_储存成功"] {
+							d.TextMapRaw["核心"]["角色管理_储存成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardnotsavedbuttagged":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_储存失败_已绑定", "角色卡\"{$t角色名}\"是绑定状态，无法进行save操作")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_储存_失败_已绑定"] {
+							srcText := "角色卡\"{$t角色名}\"是绑定状态，无法进行save操作"
+							d.TextMapRaw["核心"]["角色管理_储存失败_已绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_储存失败_已绑定"] {
+							d.TextMapRaw["核心"]["角色管理_储存失败_已绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccarddel":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_删除成功", "角色\"{$t角色名}\"删除成功")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_删除成功"] {
+							srcText := "角色\"{$t角色名}\"删除成功"
+							d.TextMapRaw["核心"]["角色管理_删除成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_删除成功"] {
+							d.TextMapRaw["核心"]["角色管理_删除成功"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardnotdelbuttagged":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_删除失败_已绑定", "角色卡\"{$t角色名}\"是绑定状态，\".pc untagAll {$t角色名}\"解除绑卡后再操作吧")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"] {
+							srcText := "角色卡\"{$t角色名}\"是绑定状态，\".pc untagAll {$t角色名}\"解除绑卡后再操作吧"
+							d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"] {
+							d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "pccardcurrentdel":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_删除成功_当前卡", "由于你删除的角色是当前角色，昵称和属性将被一同清空")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"] {
+							srcText := "由于你删除的角色是当前角色，昵称和属性将被一同清空"
+							d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"] {
+							d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"][index][0] = srcText
 						}
 						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
 						d.GenerateTextMap()

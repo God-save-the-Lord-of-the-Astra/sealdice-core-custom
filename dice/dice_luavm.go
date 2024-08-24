@@ -1,7 +1,13 @@
 package dice
 
 import (
+	"crypto/md5"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -143,48 +149,48 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	msgMeta := LuaVM.NewTypeMetatable("Message")
 	LuaVM.SetGlobal("Message", msgMeta)
 	LuaVM.SetField(msgMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
-		"Time": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LNumber(msg.Time))
+		"Time": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LNumber(msg.Time))
 			return 1
 		},
-		"MessageType": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.MessageType))
+		"MessageType": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.MessageType))
 			return 1
 		},
-		"GroupID": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.GroupID))
+		"GroupID": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.GroupID))
 			return 1
 		},
-		"GuildID": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.GuildID))
+		"GuildID": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.GuildID))
 			return 1
 		},
-		"ChannelID": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.ChannelID))
+		"ChannelID": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.ChannelID))
 			return 1
 		},
-		"Message": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.Message))
+		"Message": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.Message))
 			return 1
 		},
-		"Platform": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.Platform))
+		"Platform": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.Platform))
 			return 1
 		},
-		"GroupName": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
-			L.Push(lua.LString(msg.GroupName))
+		"GroupName": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
+			LuaVM.Push(lua.LString(msg.GroupName))
 			return 1
 		},
-		"Sender": func(L *lua.LState) int {
-			msg := L.CheckUserData(1).Value.(*Message)
+		"Sender": func(LuaVM *lua.LState) int {
+			msg := LuaVM.CheckUserData(1).Value.(*Message)
 			senderTable := LuaVM.NewTable()
 			senderTable.RawSetString("Nickname", lua.LString(msg.Sender.Nickname))
 			senderTable.RawSetString("UserID", lua.LString(msg.Sender.UserID))
@@ -201,48 +207,48 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	ctxMeta := LuaVM.NewTypeMetatable("MsgContext")
 	LuaVM.SetGlobal("MsgContext", ctxMeta)
 	LuaVM.SetField(ctxMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
-		"MessageType": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LString(ctx.MessageType))
+		"MessageType": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LString(ctx.MessageType))
 			return 1
 		},
-		"IsCurGroupBotOn": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LBool(ctx.IsCurGroupBotOn))
+		"IsCurGroupBotOn": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LBool(ctx.IsCurGroupBotOn))
 			return 1
 		},
-		"IsPrivate": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LBool(ctx.IsPrivate))
+		"IsPrivate": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LBool(ctx.IsPrivate))
 			return 1
 		},
-		"CommandID": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LNumber(ctx.CommandID))
+		"CommandID": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LNumber(ctx.CommandID))
 			return 1
 		},
-		"PrivilegeLevel": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LNumber(ctx.PrivilegeLevel))
+		"PrivilegeLevel": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LNumber(ctx.PrivilegeLevel))
 			return 1
 		},
-		"GroupRoleLevel": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LNumber(ctx.GroupRoleLevel))
+		"GroupRoleLevel": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LNumber(ctx.GroupRoleLevel))
 			return 1
 		},
-		"DelegateText": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LString(ctx.DelegateText))
+		"DelegateText": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LString(ctx.DelegateText))
 			return 1
 		},
-		"AliasPrefixText": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
-			L.Push(lua.LString(ctx.AliasPrefixText))
+		"AliasPrefixText": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+			LuaVM.Push(lua.LString(ctx.AliasPrefixText))
 			return 1
 		},
-		"Group": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
+		"Group": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
 			if ctx.Group != nil {
 				groupTable := LuaVM.NewTable()
 				LuaVM.SetField(groupTable, "GroupID", lua.LString(ctx.Group.GroupID))
@@ -256,12 +262,12 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 				LuaVM.SetField(groupTable, "InviteUserID", lua.LString(ctx.Group.InviteUserID))
 				LuaVM.Push(groupTable)
 			} else {
-				L.Push(lua.LNil)
+				LuaVM.Push(lua.LNil)
 			}
 			return 1
 		},
-		"Player": func(L *lua.LState) int {
-			ctx := L.CheckUserData(1).Value.(*MsgContext)
+		"Player": func(LuaVM *lua.LState) int {
+			ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
 			if ctx.Player != nil {
 				playerTable := LuaVM.NewTable()
 				LuaVM.SetField(playerTable, "Name", lua.LString(ctx.Player.Name))
@@ -270,7 +276,7 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 				LuaVM.SetField(playerTable, "AutoSetNameTemplate", lua.LString(ctx.Player.AutoSetNameTemplate))
 				LuaVM.Push(playerTable)
 			} else {
-				L.Push(lua.LNil)
+				LuaVM.Push(lua.LNil)
 			}
 			return 1
 		},
@@ -284,22 +290,22 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	cmdArgsMeta := LuaVM.NewTypeMetatable("CmdArgs")
 	LuaVM.SetGlobal("CmdArgs", cmdArgsMeta)
 	LuaVM.SetField(cmdArgsMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
-		"Command": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LString(cmdArgs.Command))
+		"Command": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LString(cmdArgs.Command))
 			return 1
 		},
-		"Args": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
+		"Args": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
 			argsTable := LuaVM.NewTable()
 			for _, arg := range cmdArgs.Args {
 				argsTable.Append(lua.LString(arg))
 			}
-			L.Push(argsTable)
+			LuaVM.Push(argsTable)
 			return 1
 		},
-		"Kwargs": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
+		"Kwargs": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
 			kwargsTable := LuaVM.NewTable()
 			for _, kwarg := range cmdArgs.Kwargs {
 				kwargTable := LuaVM.NewTable()
@@ -309,58 +315,58 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 				LuaVM.SetField(kwargTable, "AsBool", lua.LBool(kwarg.AsBool))
 				kwargsTable.Append(kwargTable)
 			}
-			L.Push(kwargsTable)
+			LuaVM.Push(kwargsTable)
 			return 1
 		},
-		"At": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
+		"At": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
 			atInfoTable := LuaVM.NewTable()
 			for _, at := range cmdArgs.At {
 				atTable := LuaVM.NewTable()
 				LuaVM.SetField(atTable, "UserID", lua.LString(at.UserID))
 				atInfoTable.Append(atTable)
 			}
-			L.Push(atInfoTable)
+			LuaVM.Push(atInfoTable)
 			return 1
 		},
-		"RawArgs": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LString(cmdArgs.RawArgs))
+		"RawArgs": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LString(cmdArgs.RawArgs))
 			return 1
 		},
-		"AmIBeMentioned": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LBool(cmdArgs.AmIBeMentioned))
+		"AmIBeMentioned": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LBool(cmdArgs.AmIBeMentioned))
 			return 1
 		},
-		"AmIBeMentionedFirst": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LBool(cmdArgs.AmIBeMentionedFirst))
+		"AmIBeMentionedFirst": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LBool(cmdArgs.AmIBeMentionedFirst))
 			return 1
 		},
-		"SomeoneBeMentionedButNotMe": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LBool(cmdArgs.SomeoneBeMentionedButNotMe))
+		"SomeoneBeMentionedButNotMe": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LBool(cmdArgs.SomeoneBeMentionedButNotMe))
 			return 1
 		},
-		"IsSpaceBeforeArgs": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LBool(cmdArgs.IsSpaceBeforeArgs))
+		"IsSpaceBeforeArgs": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LBool(cmdArgs.IsSpaceBeforeArgs))
 			return 1
 		},
-		"CleanArgs": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LString(cmdArgs.CleanArgs))
+		"CleanArgs": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LString(cmdArgs.CleanArgs))
 			return 1
 		},
-		"SpecialExecuteTimes": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LNumber(cmdArgs.SpecialExecuteTimes))
+		"SpecialExecuteTimes": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LNumber(cmdArgs.SpecialExecuteTimes))
 			return 1
 		},
-		"RawText": func(L *lua.LState) int {
-			cmdArgs := L.CheckUserData(1).Value.(*CmdArgs)
-			L.Push(lua.LString(cmdArgs.RawText))
+		"RawText": func(LuaVM *lua.LState) int {
+			cmdArgs := LuaVM.CheckUserData(1).Value.(*CmdArgs)
+			LuaVM.Push(lua.LString(cmdArgs.RawText))
 			return 1
 		},
 	}))
@@ -397,35 +403,57 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	}
 	LuaVM.SetField(ShikiMsgTable, "CmdTab", MsgCmdTable)
 	LuaVM.SetGlobal("shikimsg", ShikiMsgTable)
+	//----------------------------------------------------------------
+	// Dream 散装变量兼容
+	DreamMsgGroup_ID := strings.ReplaceAll(msg.GroupID, "QQ-Group:", "")
+	DreamMsgSender_ID := strings.ReplaceAll(msg.Sender.UserID, "QQ:", "")
+	DreamMsgGroup_Nick := ctx.Group.GroupName
+	DreamMsgSender_Nick := ctx.Player.Name
+	DreamMsgMessage_Text := cmdArgs.RawText
+	DreamMsgSender_Jrrp, _ := VarGetValueInt64(ctx, "$人品")
+	DreamMsgTable := LuaVM.NewTable()
+	DreamGroupTable := LuaVM.NewTable()
+	DreamMessageTable := LuaVM.NewTable()
+	DreamSenderTable := LuaVM.NewTable()
+	LuaVM.SetField(DreamGroupTable, "id", lua.LString(DreamMsgGroup_ID))
+	LuaVM.SetField(DreamGroupTable, "nick", lua.LString(DreamMsgGroup_Nick))
+	LuaVM.SetField(DreamMsgTable, "group", DreamGroupTable)
+	LuaVM.SetField(DreamMessageTable, "txt", lua.LString(DreamMsgMessage_Text))
+	LuaVM.SetField(DreamMsgTable, "message", DreamMessageTable)
+	LuaVM.SetField(DreamSenderTable, "id", lua.LString(DreamMsgSender_ID))
+	LuaVM.SetField(DreamSenderTable, "nick", lua.LString(DreamMsgSender_Nick))
+	LuaVM.SetField(DreamSenderTable, "jrrp", lua.LNumber(DreamMsgSender_Jrrp))
+	LuaVM.SetField(DreamMsgTable, "sender", DreamSenderTable)
+	LuaVM.SetGlobal("dreammsg", DreamMsgTable)
 }
 
 // ----------------------------------------------------------------
 func luaVarSetValueStr(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(2)
-	v := LuaVM.ToString(3)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(2)
+	v := LuaVM.CheckString(3)
 	VarSetValueStr(ctx, s, v)
 	return 0 // 返回 0 表示无返回值
 }
 
 func luaVarSetValueInt(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(2)
-	v := LuaVM.ToInt64(3)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(2)
+	v := LuaVM.CheckInt64(3)
 	VarSetValueInt64(ctx, s, v)
 	return 0 // 返回 0 表示无返回值
 }
 
 func luaVarDelValue(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(2)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(2)
 	VarDelValue(ctx, s)
 	return 0 // 返回 0 表示无返回值
 }
 
 func luaVarGetValueInt(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(1)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(1)
 	res, exists := VarGetValueInt64(ctx, s)
 	if !exists {
 		return 0 // 返回 0 表示没有值
@@ -435,8 +463,8 @@ func luaVarGetValueInt(LuaVM *lua.LState) int {
 }
 
 func luaVarGetValueStr(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(2)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(2)
 	res, exists := VarGetValueStr(ctx, s)
 	if !exists {
 		return 0 // 返回 0 表示没有值
@@ -446,29 +474,29 @@ func luaVarGetValueStr(LuaVM *lua.LState) int {
 }
 
 func luaAddBan(LuaVM *lua.LState) int {
-	id := LuaVM.ToString(1)
-	d := LuaVM.ToUserData(2).Value.(*Dice)
-	place := LuaVM.ToString(3)
-	reason := LuaVM.ToString(4)
-	ctx := LuaVM.ToUserData(5).Value.(*MsgContext)
+	id := LuaVM.CheckString(1)
+	d := LuaVM.CheckUserData(2).Value.(*Dice)
+	place := LuaVM.CheckString(3)
+	reason := LuaVM.CheckString(4)
+	ctx := LuaVM.CheckUserData(5).Value.(*MsgContext)
 	d.BanList.AddScoreBase(id, d.BanList.ThresholdBan, place, reason, ctx)
 	d.BanList.SaveChanged(d)
 	return 1 // 返回 1 表示成功
 }
 
 func luaAddTrust(LuaVM *lua.LState) int {
-	d := LuaVM.ToUserData(1).Value.(*Dice)
-	id := LuaVM.ToString(2)
-	place := LuaVM.ToString(3)
-	reason := LuaVM.ToString(4)
+	d := LuaVM.CheckUserData(1).Value.(*Dice)
+	id := LuaVM.CheckString(2)
+	place := LuaVM.CheckString(3)
+	reason := LuaVM.CheckString(4)
 	d.BanList.SetTrustByID(id, place, reason)
 	d.BanList.SaveChanged(d)
 	return 1 // 返回 1 表示成功
 }
 
 func luaRemoveBan(LuaVM *lua.LState) int {
-	d := LuaVM.ToUserData(1).Value.(*Dice)
-	id := LuaVM.ToString(2)
+	d := LuaVM.CheckUserData(1).Value.(*Dice)
+	id := LuaVM.CheckString(2)
 	_, ok := d.BanList.GetByID(id)
 	if !ok {
 		return 0 // 返回 0 表示没有值
@@ -478,65 +506,65 @@ func luaRemoveBan(LuaVM *lua.LState) int {
 }
 
 func luaReplyGroup(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	msg := LuaVM.ToUserData(2).Value.(*Message)
-	text := LuaVM.ToString(3)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	msg := LuaVM.CheckUserData(2).Value.(*Message)
+	text := LuaVM.CheckString(3)
 	ReplyGroup(ctx, msg, text)
 	return 1 // 返回 1 表示成功
 }
 
 func luaReplyPerson(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	msg := LuaVM.ToUserData(2).Value.(*Message)
-	text := LuaVM.ToString(3)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	msg := LuaVM.CheckUserData(2).Value.(*Message)
+	text := LuaVM.CheckString(3)
 	ReplyPerson(ctx, msg, text)
 	return 1 // 返回 1 表示成功
 }
 
 func luaReplyToSender(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	msg := LuaVM.ToUserData(2).Value.(*Message)
-	text := LuaVM.ToString(3)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	msg := LuaVM.CheckUserData(2).Value.(*Message)
+	text := LuaVM.CheckString(3)
 	ReplyToSender(ctx, msg, text)
 	return 1 // 返回 1 表示成功
 }
 func luaMemberBan(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	groupID := LuaVM.ToString(2)
-	userID := LuaVM.ToString(3)
-	duration := LuaVM.ToInt64(4)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	groupID := LuaVM.CheckString(2)
+	userID := LuaVM.CheckString(3)
+	duration := LuaVM.CheckInt64(4)
 	MemberBan(ctx, groupID, userID, duration)
 	return 1 // 返回 1 表示成功
 }
 func luaMemberKick(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	groupID := LuaVM.ToString(2)
-	userID := LuaVM.ToString(3)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	groupID := LuaVM.CheckString(2)
+	userID := LuaVM.CheckString(3)
 	MemberKick(ctx, groupID, userID)
 	return 1 // 返回 1 表示成功
 }
 func luaDiceFormat(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(2)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(2)
 	res := DiceFormat(ctx, s)
 	LuaVM.Push(lua.LString(res))
 	return 1 // 返回 1 表示成功
 }
 
 func luaDiceFormatTmpl(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	s := LuaVM.ToString(2)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	s := LuaVM.CheckString(2)
 	res := DiceFormatTmpl(ctx, s)
 	LuaVM.Push(lua.LString(res))
 	return 1 // 返回 1 表示成功
 }
 
 func luaShikiSendMsg(LuaVM *lua.LState) int {
-	ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-	msg := LuaVM.ToUserData(2).Value.(*Message)
-	text := LuaVM.ToString(3)
-	msg_fromGroup := LuaVM.ToString(4)
-	msg_fromQQ := LuaVM.ToString(5)
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	msg := LuaVM.CheckUserData(2).Value.(*Message)
+	text := LuaVM.CheckString(3)
+	msg_fromGroup := LuaVM.CheckString(4)
+	msg_fromQQ := LuaVM.CheckString(5)
 	if msg_fromGroup != "" && strings.HasPrefix(msg_fromGroup, "QQ-Group:") == false {
 		msg_fromGroup = fmt.Sprintf("%s%s", "QQ-Group:", msg_fromGroup)
 	}
@@ -559,14 +587,328 @@ func luaShikiSendMsg(LuaVM *lua.LState) int {
 	return 1 // 返回 1 表示成功
 }
 
+// ----------------------------------------------------------------
+func luaDreamJSONEncode(LuaVM *lua.LState) int {
+	lv := LuaVM.CheckTable(1)
+	goMap := toGoMap(lv)
+	jsonData, err := json.Marshal(goMap)
+	if err != nil {
+		LuaVM.Push(lua.LNil)
+		LuaVM.Push(lua.LString(err.Error()))
+		return 2
+	}
+
+	LuaVM.Push(lua.LString(jsonData))
+	return 1 // 返回 1 表示成功
+}
+
+// luaJSONDecode decodes a JSON string into a Lua table.
+func luaDreamJSONDecode(LuaVM *lua.LState) int {
+	jsonStr := LuaVM.CheckString(1)
+
+	var goMap map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &goMap)
+	if err != nil {
+		LuaVM.Push(lua.LNil)
+		LuaVM.Push(lua.LString(err.Error()))
+		return 2
+	}
+
+	luaTable := toLuaTable(LuaVM, goMap)
+	LuaVM.Push(luaTable)
+	return 1 // 返回 1 表示成功
+}
+
+// toGoMap converts a Lua table to a Go map.
+func toGoMap(lv *lua.LTable) map[string]interface{} {
+	goMap := make(map[string]interface{})
+	lv.ForEach(func(key lua.LValue, value lua.LValue) {
+		goMap[key.String()] = toGoValue(value)
+	})
+	return goMap
+}
+
+// toGoValue converts a Lua value to a Go value.
+func toGoValue(lv lua.LValue) interface{} {
+	switch lv.Type() {
+	case lua.LTString:
+		return lv.String()
+	case lua.LTNumber:
+		return float64(lua.LVAsNumber(lv))
+	case lua.LTBool:
+		return lua.LVAsBool(lv)
+	case lua.LTTable:
+		return toGoMap(lv.(*lua.LTable))
+	default:
+		return nil
+	}
+}
+
+// toLuaTable converts a Go map to a Lua table.
+func toLuaTable(LuaVM *lua.LState, goMap map[string]interface{}) *lua.LTable {
+	luaTable := LuaVM.NewTable()
+	for key, value := range goMap {
+		luaTable.RawSetString(key, toLuaValue(LuaVM, value))
+	}
+	return luaTable
+}
+
+// toLuaValue converts a Go value to a Lua value.
+func toLuaValue(LuaVM *lua.LState, value interface{}) lua.LValue {
+	switch v := value.(type) {
+	case string:
+		return lua.LString(v)
+	case float64:
+		return lua.LNumber(v)
+	case bool:
+		return lua.LBool(v)
+	case map[string]interface{}:
+		return toLuaTable(LuaVM, v)
+	default:
+		return lua.LNil
+	}
+}
+
+// String sub function
+func luaDreamStringSub(LuaVM *lua.LState) int {
+	str := LuaVM.CheckString(1)
+	start := LuaVM.CheckInt(2)
+	end := LuaVM.CheckInt(3)
+	LuaVM.Push(lua.LString(string([]rune(str)[start-1 : end])))
+	return 1
+}
+
+// String part function
+func luaDreamStringPart(LuaVM *lua.LState) int {
+	str := LuaVM.CheckString(1)
+	sep := LuaVM.CheckString(2)
+	parts := strings.Split(str, sep)
+	table := LuaVM.NewTable()
+	for i, part := range parts {
+		table.RawSetInt(i+1, lua.LString(part))
+	}
+	LuaVM.Push(table)
+	return 1
+}
+
+// String find function
+func luaDreamStringFind(LuaVM *lua.LState) int {
+	str := LuaVM.CheckString(1)
+	substr := LuaVM.CheckString(2)
+	count := strings.Count(str, substr)
+	LuaVM.Push(lua.LNumber(count))
+	return 1
+}
+
+// String toTable function
+func luaDreamStringToTable(LuaVM *lua.LState) int {
+	str := LuaVM.CheckString(1)
+	runes := []rune(str)
+	table := LuaVM.NewTable()
+	for i, r := range runes {
+		table.RawSetInt(i+1, lua.LString(string(r)))
+	}
+	LuaVM.Push(table)
+	return 1
+}
+
+// String len function
+func luaDreamStringLen(LuaVM *lua.LState) int {
+	str := LuaVM.CheckString(1)
+	length := len([]rune(str))
+	LuaVM.Push(lua.LNumber(length))
+	return 1
+}
+
+// String format function
+func luaDreamStringFormat(LuaVM *lua.LState) int {
+	str := LuaVM.CheckString(1)
+	tab := LuaVM.CheckTable(2)
+	vars := make(map[string]string)
+	tab.ForEach(func(key, value lua.LValue) {
+		vars[key.String()] = value.String()
+	})
+	for k, v := range vars {
+		str = strings.ReplaceAll(str, "{"+k+"}", v)
+	}
+	LuaVM.Push(lua.LString(str))
+	return 1
+}
+
+func luaDreamTableType(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	isArray := true
+	isObject := true
+
+	table.ForEach(func(key, value lua.LValue) {
+		if key.Type() == lua.LTNumber {
+			isObject = false
+		} else if key.Type() == lua.LTString {
+			isArray = false
+		}
+	})
+
+	if isArray {
+		LuaVM.Push(lua.LString("array"))
+	} else if isObject {
+		LuaVM.Push(lua.LString("object"))
+	} else {
+		LuaVM.Push(lua.LNil)
+	}
+	return 1
+}
+
+// Function to make a table orderly
+func luaDreamTableOrderly(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	newTable := LuaVM.NewTable()
+
+	table.ForEach(func(key, value lua.LValue) {
+		if key.Type() == lua.LTNumber {
+			newTable.Append(value)
+		}
+	})
+	LuaVM.Push(newTable)
+	return 1
+}
+
+// Function to get the length of a table
+func luaDreamTableGetNumber(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	length := 0
+
+	table.ForEach(func(key, value lua.LValue) {
+		length++
+	})
+	LuaVM.Push(lua.LNumber(length))
+	return 1
+}
+
+// Function to sort a table
+func luaDreamTableSort(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	key := LuaVM.OptString(2, "")
+
+	var values []lua.LValue
+	table.ForEach(func(_, value lua.LValue) {
+		values = append(values, value)
+	})
+
+	if key == "" {
+		sort.Slice(values, func(i, j int) bool {
+			return values[i].(lua.LNumber) > values[j].(lua.LNumber)
+		})
+	} else {
+		sort.Slice(values, func(i, j int) bool {
+			return values[i].(*lua.LTable).RawGetString(key).(lua.LNumber) > values[j].(*lua.LTable).RawGetString(key).(lua.LNumber)
+		})
+	}
+
+	newTable := LuaVM.NewTable()
+	for _, value := range values {
+		newTable.Append(value)
+	}
+	LuaVM.Push(newTable)
+	return 1
+}
+
+// Function to clone a table
+func luaDreamTableClone(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	newTable := LuaVM.NewTable()
+
+	table.ForEach(func(key, value lua.LValue) {
+		newTable.RawSet(key, value)
+	})
+	LuaVM.Push(newTable)
+	return 1
+}
+
+// Function to check if two tables are equal
+func luaDreamTableEqual(LuaVM *lua.LState) int {
+	table1 := LuaVM.CheckTable(1)
+	table2 := LuaVM.CheckTable(2)
+
+	if reflect.DeepEqual(table1, table2) {
+		LuaVM.Push(lua.LTrue)
+	} else {
+		LuaVM.Push(lua.LFalse)
+	}
+	return 1
+}
+
+// Function to replace substrings in an array of strings
+func luaDreamTableGsub(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	old := LuaVM.CheckString(2)
+	new := LuaVM.CheckString(3)
+
+	newTable := LuaVM.NewTable()
+	table.ForEach(func(_, value lua.LValue) {
+		str := strings.Replace(value.String(), old, new, -1)
+		newTable.Append(lua.LString(str))
+	})
+	LuaVM.Push(newTable)
+	return 1
+}
+
+// Function to add two tables
+func luaDreamTableAdd(LuaVM *lua.LState) int {
+	table1 := LuaVM.CheckTable(1)
+	table2 := LuaVM.CheckTable(2)
+	newTable := LuaVM.NewTable()
+
+	table1.ForEach(func(key, value lua.LValue) {
+		newTable.RawSet(key, value)
+	})
+	table2.ForEach(func(key, value lua.LValue) {
+		newTable.RawSet(key, value)
+	})
+	LuaVM.Push(newTable)
+	return 1
+}
+
+// Base64 encode function
+func luaDreamBase64Encode(LuaVM *lua.LState) int {
+	input := LuaVM.CheckString(1)
+	encoded := base64.StdEncoding.EncodeToString([]byte(input))
+	LuaVM.Push(lua.LString(encoded))
+	return 1
+}
+
+// Base64 decode function
+func luaDreamBase64Decode(LuaVM *lua.LState) int {
+	input := LuaVM.CheckString(1)
+	decoded, err := base64.StdEncoding.DecodeString(input)
+	if err != nil {
+		LuaVM.Push(lua.LNil)
+		LuaVM.Push(lua.LString(err.Error()))
+		return 2
+	}
+	LuaVM.Push(lua.LString(decoded))
+	return 1
+}
+
+// MD5 hash function
+func luaDreamMd5Hash(LuaVM *lua.LState) int {
+	input := LuaVM.CheckString(1)
+	hash := md5.New()
+	io.WriteString(hash, input)
+	hashed := fmt.Sprintf("%x", hash.Sum(nil))
+	LuaVM.Push(lua.LString(hashed))
+	return 1
+}
+
+//----------------------------------------------------------------
+
 /*
 	func luaShikiEventMsg(LuaVM *lua.LState) int {
-		ctx := LuaVM.ToUserData(1).Value.(*MsgContext)
-		msg := LuaVM.ToUserData(2).Value.(*Message)
-		cmdArgs := LuaVM.ToUserData(3).Value.(*CmdArgs)
-		text := LuaVM.ToString(4)
-		msg_fromGroup := LuaVM.ToString(5)
-		msg_fromQQ := LuaVM.ToString(6)
+		ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+		msg := LuaVM.CheckUserData(2).Value.(*Message)
+		cmdArgs := LuaVM.CheckUserData(3).Value.(*CmdArgs)
+		text := LuaVM.CheckString(4)
+		msg_fromGroup := LuaVM.CheckString(5)
+		msg_fromQQ := LuaVM.CheckString(6)
 		if msg_fromGroup != "" && strings.HasPrefix(msg_fromGroup, "QQ-Group:") == false {
 			msg_fromGroup = fmt.Sprintf("%s%s", "QQ-Group:", msg_fromGroup)
 		}
@@ -606,4 +948,36 @@ func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdA
 	LuaVM.SetGlobal("DiceFormat", LuaVM.NewFunction(luaDiceFormat))
 	LuaVM.SetGlobal("DiceFormatTmpl", LuaVM.NewFunction(luaDiceFormatTmpl))
 	LuaVM.SetGlobal("shikisendMsg", LuaVM.NewFunction(luaShikiSendMsg))
+	//----------------------------------------------------------------
+	DreamLib := LuaVM.NewTable()
+	DreamJson := LuaVM.NewTable()
+	DreamString := LuaVM.NewTable()
+	DreamTable := LuaVM.NewTable()
+	DreamBase64 := LuaVM.NewTable()
+	DreamMd5 := LuaVM.NewTable()
+	LuaVM.SetField(DreamLib, "json", DreamJson)
+	LuaVM.SetField(DreamJson, "encode", LuaVM.NewFunction(luaDreamJSONEncode))
+	LuaVM.SetField(DreamJson, "decode", LuaVM.NewFunction(luaDreamJSONDecode))
+	LuaVM.SetField(DreamLib, "string", DreamString)
+	LuaVM.SetField(DreamString, "sub", LuaVM.NewFunction(luaDreamStringSub))
+	LuaVM.SetField(DreamString, "part", LuaVM.NewFunction(luaDreamStringPart))
+	LuaVM.SetField(DreamString, "find", LuaVM.NewFunction(luaDreamStringFind))
+	LuaVM.SetField(DreamString, "totable", LuaVM.NewFunction(luaDreamStringToTable))
+	LuaVM.SetField(DreamString, "len", LuaVM.NewFunction(luaDreamStringLen))
+	LuaVM.SetField(DreamString, "format", LuaVM.NewFunction(luaDreamStringFormat))
+	LuaVM.SetField(DreamLib, "table", DreamTable)
+	LuaVM.SetField(DreamTable, "type", LuaVM.NewFunction(luaDreamTableType))
+	LuaVM.SetField(DreamTable, "orderly", LuaVM.NewFunction(luaDreamTableOrderly))
+	LuaVM.SetField(DreamTable, "getnumber", LuaVM.NewFunction(luaDreamTableGetNumber))
+	LuaVM.SetField(DreamTable, "sort", LuaVM.NewFunction(luaDreamTableSort))
+	LuaVM.SetField(DreamTable, "clone", LuaVM.NewFunction(luaDreamTableClone))
+	LuaVM.SetField(DreamTable, "equal", LuaVM.NewFunction(luaDreamTableEqual))
+	LuaVM.SetField(DreamTable, "gsub", LuaVM.NewFunction(luaDreamTableGsub))
+	LuaVM.SetField(DreamTable, "add", LuaVM.NewFunction(luaDreamTableAdd))
+	LuaVM.SetField(DreamLib, "base64", DreamBase64)
+	LuaVM.SetField(DreamBase64, "encode", LuaVM.NewFunction(luaDreamBase64Encode))
+	LuaVM.SetField(DreamBase64, "decode", LuaVM.NewFunction(luaDreamBase64Decode))
+	LuaVM.SetField(DreamLib, "md5", DreamMd5)
+	LuaVM.SetField(DreamMd5, "hash", LuaVM.NewFunction(luaDreamMd5Hash))
+	LuaVM.SetGlobal("dream", DreamLib)
 }
