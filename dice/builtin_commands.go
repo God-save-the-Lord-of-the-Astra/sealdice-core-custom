@@ -260,11 +260,13 @@ func (d *Dice) registerCoreCommands() {
 
 	helpForShikiBlack := ".admin blackqq +/- <帐号> [<原因>]\n" +
 		".admin blackgroup +/- <群号> [<原因>]\n" +
-		".admin dismiss <群号> [<原因>]"
+		".admin dismiss <群号> [<原因>]\n" +
+		".admin notice list //列出消息通知窗口\n" +
+		".admin notice +/- <统一ID> //增删消息通知窗口"
 	cmdShikiBlack := &CmdItemInfo{
 		Name:      "admin",
 		ShortHelp: helpForShikiBlack,
-		Help:      "黑名单指令:\n" + helpForShikiBlack,
+		Help:      "管理指令:\n" + helpForShikiBlack,
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
 			cmdArgs.ChopPrefixToArgsWith("blackqq", "blackgroup", "-", "+", "dismiss")
 			if ctx.PrivilegeLevel < 100 {
@@ -402,6 +404,53 @@ func (d *Dice) registerCoreCommands() {
 				mctx.EndPoint.Adapter.QuitGroup(mctx, gp.GroupID)
 
 				return CmdExecuteResult{Matched: true, Solved: true}
+
+			case "notice":
+				var subval = cmdArgs.GetArgN(2)
+				NoticeUID := cmdArgs.GetArgN(3)
+				if strings.ToLower(subval) == "list" {
+					text := ""
+					for _, v := range d.NoticeIDs {
+						text += "- " + v + "\n"
+					}
+					if text == "" {
+						text = "无"
+					}
+					reply := fmt.Sprintf("通知窗口列表:\n%s", text)
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+				} else {
+					if strings.HasPrefix(NoticeUID, "g") {
+						NoticeUID = strings.ReplaceAll(NoticeUID, "g", "QQ-Group:")
+					}
+					if strings.HasPrefix(NoticeUID, "QQ-Group:") || strings.HasPrefix(NoticeUID, "QQ:") || strings.HasPrefix(NoticeUID, "Mail:") {
+						// 需要以QQ-Group:或者QQ:或者g开头
+					} else {
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "不正确的消息通知窗口表达式", NoticeUID))
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
+					if subval == "" || subval == "help" {
+						return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+					} else if subval == "+" {
+						d.NoticeIDs = append(d.NoticeIDs, NoticeUID)
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s", "已将窗口", NoticeUID, "加入消息通知队列"))
+						d.Save(false)
+						return CmdExecuteResult{Matched: true, Solved: true}
+					} else if subval == "-" {
+						for i, v := range d.NoticeIDs {
+							if v == NoticeUID {
+								d.NoticeIDs = append(d.NoticeIDs[:i], d.NoticeIDs[i+1:]...)
+								ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s", "已将窗口", NoticeUID, "移出消息通知队列"))
+								d.Save(false)
+								return CmdExecuteResult{Matched: true, Solved: true}
+							}
+						}
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "没有找到消息通知窗口", NoticeUID))
+						d.Save(false)
+					} else {
+						return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+					}
+				}
 			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
