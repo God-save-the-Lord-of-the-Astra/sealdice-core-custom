@@ -425,23 +425,4 @@ var GocqAppVersionMap = map[string]map[ProtocolType]GocqAppVersion{
 			ProtocolType:    AndroidPhone,
 		},
 	},
-	"9.0.56": {
-		AndroidPad: {
-			ApkID:           "com.tencent.mobileqq",
-			AppID:           537220362,
-			SubAppID:        537220362,
-			AppKey:          "0S200MNJT807V3GE",
-			SortVersionName: "9.0.56.16830",
-			BuildTime:       1713424357,
-			ApkSign:         "a6b745bf24a2c277527716f6f36eb68d",
-			SdkVersion:      "6.0.0.2560",
-			SsoVersion:      21,
-			MiscBitmap:      150470524,
-			MainSigMap:      34869472,
-			SubSigMap:       66560,
-			DumpTime:        1713424357,
-			Qua:             "V1_AND_SQ_9.0.56_6372_YYB_D",
-			ProtocolType:    6,
-		},
-	},
 }

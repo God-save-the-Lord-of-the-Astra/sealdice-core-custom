@@ -2,6 +2,7 @@ package dice
 
 import (
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -147,6 +148,7 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	msgUD := LuaVM.NewUserData()
 	msgUD.Value = msg
 	msgMeta := LuaVM.NewTypeMetatable("Message")
+	msgUD.Metatable = msgMeta
 	LuaVM.SetGlobal("Message", msgMeta)
 	LuaVM.SetField(msgMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
 		"Time": func(LuaVM *lua.LState) int {
@@ -205,6 +207,7 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	ctxUD := LuaVM.NewUserData()
 	ctxUD.Value = ctx
 	ctxMeta := LuaVM.NewTypeMetatable("MsgContext")
+	ctxUD.Metatable = ctxMeta
 	LuaVM.SetGlobal("MsgContext", ctxMeta)
 	LuaVM.SetField(ctxMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
 		"MessageType": func(LuaVM *lua.LState) int {
@@ -288,6 +291,7 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	cmdArgsUD := LuaVM.NewUserData()
 	cmdArgsUD.Value = cmdArgs
 	cmdArgsMeta := LuaVM.NewTypeMetatable("CmdArgs")
+	cmdArgsUD.Metatable = cmdArgsMeta
 	LuaVM.SetGlobal("CmdArgs", cmdArgsMeta)
 	LuaVM.SetField(cmdArgsMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
 		"Command": func(LuaVM *lua.LState) int {
@@ -565,6 +569,9 @@ func luaShikiSendMsg(LuaVM *lua.LState) int {
 	text := LuaVM.CheckString(3)
 	msg_fromGroup := LuaVM.CheckString(4)
 	msg_fromQQ := LuaVM.CheckString(5)
+	if msg_fromQQ == "" {
+		msg_fromQQ = ctx.Player.UserID
+	}
 	if msg_fromGroup != "" && strings.HasPrefix(msg_fromGroup, "QQ-Group:") == false {
 		msg_fromGroup = fmt.Sprintf("%s%s", "QQ-Group:", msg_fromGroup)
 	}
@@ -771,6 +778,75 @@ func luaDreamTableOrderly(LuaVM *lua.LState) int {
 	LuaVM.Push(newTable)
 	return 1
 }
+func luaDreamtableToString(LuaVM *lua.LState) int {
+	table := LuaVM.CheckTable(1)
+	result, err := tableToStringInDreamTable(table, "", make(map[*lua.LTable]bool))
+	if err != nil {
+		LuaVM.RaiseError(err.Error())
+		return 0
+	}
+	LuaVM.Push(lua.LString(result))
+	return 1
+}
+
+func tableToStringInDreamTable(table *lua.LTable, indent string, visited map[*lua.LTable]bool) (string, error) {
+	if visited[table] {
+		return "", fmt.Errorf("circular references")
+	}
+	visited[table] = true
+
+	var sb strings.Builder
+	sb.WriteString("{")
+	newIndent := indent + "  "
+
+	table.ForEach(func(key lua.LValue, value lua.LValue) {
+		keyStr := luaValueToStringInDreamTable(key)
+		valueStr := ""
+		if value.Type() == lua.LTTable {
+			if visited[value.(*lua.LTable)] {
+				valueStr = "circular reference"
+			} else {
+				var err error
+				valueStr, err = tableToStringInDreamTable(value.(*lua.LTable), newIndent, visited)
+				if err != nil {
+					valueStr = "error"
+				}
+			}
+		} else {
+			valueStr = luaValueToStringInDreamTable(value)
+		}
+		sb.WriteString(fmt.Sprintf("\n%s[%s] -> %s", newIndent, keyStr, valueStr))
+	})
+
+	if sb.String() != "{" {
+		sb.WriteString(fmt.Sprintf("\n%s}", indent))
+	} else {
+		sb.WriteString("}")
+	}
+
+	return sb.String(), nil
+}
+
+func luaValueToStringInDreamTable(value lua.LValue) string {
+	switch value.Type() {
+	case lua.LTNil:
+		return "nil"
+	case lua.LTBool:
+		return fmt.Sprintf("%t", lua.LVAsBool(value))
+	case lua.LTNumber:
+		return fmt.Sprintf("%v", lua.LVAsNumber(value))
+	case lua.LTString:
+		return fmt.Sprintf("%q", lua.LVAsString(value))
+	case lua.LTFunction:
+		return "function"
+	case lua.LTTable:
+		return "table"
+	case lua.LTUserData:
+		return "userdata"
+	default:
+		return "unknown"
+	}
+}
 
 // Function to get the length of a table
 func luaDreamTableGetNumber(LuaVM *lua.LState) int {
@@ -852,19 +928,28 @@ func luaDreamTableGsub(LuaVM *lua.LState) int {
 	return 1
 }
 
-// Function to add two tables
 func luaDreamTableAdd(LuaVM *lua.LState) int {
-	table1 := LuaVM.CheckTable(1)
-	table2 := LuaVM.CheckTable(2)
+	// 创建一个新的表用于存储合并结果
 	newTable := LuaVM.NewTable()
 
-	table1.ForEach(func(key, value lua.LValue) {
-		newTable.RawSet(key, value)
-	})
-	table2.ForEach(func(key, value lua.LValue) {
-		newTable.RawSet(key, value)
-	})
+	// 获取传入参数的数量
+	numArgs := LuaVM.GetTop()
+
+	// 遍历所有传入的参数
+	for i := 1; i <= numArgs; i++ {
+		// 检查参数是否为表
+		table := LuaVM.CheckTable(i)
+
+		// 将当前表的所有键值对添加到新表中
+		table.ForEach(func(key, value lua.LValue) {
+			newTable.RawSet(key, value)
+		})
+	}
+
+	// 将合并后的新表压入 Lua 栈
 	LuaVM.Push(newTable)
+
+	// 返回结果表的数量
 	return 1
 }
 
@@ -896,6 +981,65 @@ func luaDreamMd5Hash(LuaVM *lua.LState) int {
 	io.WriteString(hash, input)
 	hashed := fmt.Sprintf("%x", hash.Sum(nil))
 	LuaVM.Push(lua.LString(hashed))
+	return 1
+}
+
+// SHA256 hash function
+func luaDreamSha256Hash(LuaVM *lua.LState) int {
+	input := LuaVM.CheckString(1)
+	hash := sha256.New()
+	io.WriteString(hash, input)
+	hashed := fmt.Sprintf("%x", hash.Sum(nil))
+	LuaVM.Push(lua.LString(hashed))
+	return 1
+}
+
+// BKDRHash function
+func luaDreamBKDRHash(LuaVM *lua.LState) int {
+	input := LuaVM.CheckString(1)
+	seed := LuaVM.CheckInt(2)
+	hash := BKDRHashInDreamBKDR(input, seed)
+	LuaVM.Push(lua.LString(hash))
+	return 1
+}
+
+// BKDRHash算法
+func BKDRHashInDreamBKDR(s string, seed int) string {
+	const seed_a = 131  // 31 131 1313 13131 131313 etc.
+	const seed_b = 1313 // 131 1313 13131 131313 etc.
+	hash := 0
+	for _, c := range s {
+		hash = (hash*seed_a + int(c)) % seed_b
+	}
+	return fmt.Sprintf("%d", hash)
+}
+
+//----------------------------------------------------------------
+
+func luaZhaoDiceSDKSystemReload(LuaVM *lua.LState) int {
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	var dm = ctx.Dice.Parent
+	dm.RebootRequestChan <- 1
+	return 1
+}
+
+func luaZhaoDiceSDKTrim(L *lua.LState) int {
+	// 获取第一个参数，并确保它是一个字符串
+	str := L.CheckString(1)
+	// 去除字符串两端的空白字符
+	trimmedStr := strings.TrimSpace(str)
+	// 将结果压入 Lua 栈
+	L.Push(lua.LString(trimmedStr))
+	// 返回结果的数量
+	return 1
+}
+
+func luaZhaoDiceSDKContains(L *lua.LState) int {
+	str1 := L.CheckString(1)
+	str2 := L.CheckString(2)
+	flg := strings.Contains(str1, str2)
+	L.Push(lua.LBool(flg))
+	// 返回结果的数量
 	return 1
 }
 
@@ -950,11 +1094,15 @@ func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdA
 	LuaVM.SetGlobal("shikisendMsg", LuaVM.NewFunction(luaShikiSendMsg))
 	//----------------------------------------------------------------
 	DreamLib := LuaVM.NewTable()
+	DreamLib.RawSetString("_VERSION", lua.LString("ver4.9.6(206)"))
+	DreamLib.RawSetString("version", lua.LString("Dream by 筑梦师V2.0&乐某人 for Tempest Dice"))
 	DreamJson := LuaVM.NewTable()
 	DreamString := LuaVM.NewTable()
 	DreamTable := LuaVM.NewTable()
 	DreamBase64 := LuaVM.NewTable()
 	DreamMd5 := LuaVM.NewTable()
+	DreamSha256 := LuaVM.NewTable()
+	DreamBKDR := LuaVM.NewTable()
 	LuaVM.SetField(DreamLib, "json", DreamJson)
 	LuaVM.SetField(DreamJson, "encode", LuaVM.NewFunction(luaDreamJSONEncode))
 	LuaVM.SetField(DreamJson, "decode", LuaVM.NewFunction(luaDreamJSONDecode))
@@ -974,10 +1122,23 @@ func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdA
 	LuaVM.SetField(DreamTable, "equal", LuaVM.NewFunction(luaDreamTableEqual))
 	LuaVM.SetField(DreamTable, "gsub", LuaVM.NewFunction(luaDreamTableGsub))
 	LuaVM.SetField(DreamTable, "add", LuaVM.NewFunction(luaDreamTableAdd))
+	LuaVM.SetField(DreamTable, "tostring", LuaVM.NewFunction(luaDreamtableToString))
 	LuaVM.SetField(DreamLib, "base64", DreamBase64)
 	LuaVM.SetField(DreamBase64, "encode", LuaVM.NewFunction(luaDreamBase64Encode))
 	LuaVM.SetField(DreamBase64, "decode", LuaVM.NewFunction(luaDreamBase64Decode))
 	LuaVM.SetField(DreamLib, "md5", DreamMd5)
 	LuaVM.SetField(DreamMd5, "hash", LuaVM.NewFunction(luaDreamMd5Hash))
+	LuaVM.SetField(DreamLib, "sha256", DreamSha256)
+	LuaVM.SetField(DreamSha256, "hash", LuaVM.NewFunction(luaDreamSha256Hash))
+	LuaVM.SetField(DreamLib, "BKDR", DreamBKDR)
+	LuaVM.SetField(DreamBKDR, "hash", LuaVM.NewFunction(luaDreamBKDRHash))
 	LuaVM.SetGlobal("dream", DreamLib)
+	//----------------------------------------------------------------
+	ZhaoDiceSDK := LuaVM.NewTable()
+	ZhaoDiceSDKSystem := LuaVM.NewTable()
+	LuaVM.SetField(ZhaoDiceSDK, "trim", LuaVM.NewFunction(luaZhaoDiceSDKTrim))
+	LuaVM.SetField(ZhaoDiceSDK, "contains", LuaVM.NewFunction(luaZhaoDiceSDKContains))
+	LuaVM.SetField(ZhaoDiceSDK, "system", ZhaoDiceSDKSystem)
+	LuaVM.SetField(ZhaoDiceSDKSystem, "reload", LuaVM.NewFunction(luaZhaoDiceSDKSystemReload))
+	LuaVM.SetGlobal("zhaodicesdk", ZhaoDiceSDK)
 }

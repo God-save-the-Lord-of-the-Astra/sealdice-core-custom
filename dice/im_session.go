@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"sealdice-core/dice/model"
+	"sealdice-core/message"
+
 	"github.com/golang-module/carbon"
 	ds "github.com/sealdice/dicescript"
 	rand2 "golang.org/x/exp/rand"
-
-	"sealdice-core/dice/model"
-	"sealdice-core/message"
 
 	"github.com/dop251/goja"
 	"github.com/jmoiron/sqlx"
@@ -1532,6 +1532,7 @@ func checkBan(ctx *MsgContext, msg *Message) (notReply bool) {
 				} else {
 					text := fmt.Sprintf("警告: <%s>(%s)是黑名单用户，将对骰主进行通知并退群。", msg.Sender.Nickname, msg.Sender.UserID)
 					ReplyGroupRaw(ctx, &Message{GroupID: groupID}, text, "")
+
 					noticeMsg := fmt.Sprintf("检测到群(%s)内黑名单用户<%s>(%s)，因是管理以上权限，执行通告后自动退群\n%s", groupID, msg.Sender.Nickname, msg.Sender.UserID, reasontext)
 					log.Info(noticeMsg)
 					ctx.Notice(noticeMsg)
@@ -1544,6 +1545,7 @@ func checkBan(ctx *MsgContext, msg *Message) (notReply bool) {
 					notReply = true
 					noticeMsg := fmt.Sprintf("检测到群(%s)内黑名单用户<%s>(%s)，因是普通群员，进行群内通告\n%s", groupID, msg.Sender.Nickname, msg.Sender.UserID, reasontext)
 					log.Info(noticeMsg)
+
 					text := fmt.Sprintf("警告: <%s>(%s)是黑名单用户，将对骰主进行通知。", msg.Sender.Nickname, msg.Sender.UserID)
 					ReplyGroupRaw(ctx, &Message{GroupID: groupID}, text, "")
 
@@ -2043,8 +2045,6 @@ func (ctx *MsgContext) NoticeCrossPlatform(txt string) {
 	go foo()
 }
 
-var randSourceSplitKey = rand2.NewSource(uint64(time.Now().Unix()))
-
 func (ctx *MsgContext) Notice(txt string) {
 	// Notice
 	// 通知种类之三：每个noticeID  * 当前mctx的ep：不跨平台通知
@@ -2083,6 +2083,8 @@ func (ctx *MsgContext) Notice(txt string) {
 	}
 	go foo()
 }
+
+var randSourceSplitKey = rand2.NewSource(uint64(time.Now().Unix()))
 
 func (ctx *MsgContext) InitSplitKey() {
 	if len(ctx.splitKey) > 0 {

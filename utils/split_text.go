@@ -11,7 +11,7 @@ const DefaultSplitPaginationHint = "[ %d / %d ]\n"
 
 func splitFirst(s string, maxLen int) (first string, rest string) {
 	// 不足上限不切分
-	if len(s) <= maxLen || strings.Contains(s, "!warning{") {
+	if len(s) <= maxLen {
 		return s, ""
 	}
 

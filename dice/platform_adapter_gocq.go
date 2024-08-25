@@ -627,73 +627,59 @@ func (pa *PlatformAdapterGocq) Serve() int {
 			return
 		}
 
+		// 好友请求
 		if msgQQ.PostType == "request" && msgQQ.RequestType == "friend" { //nolint:nestif
-			// 如果收到的是好友请求
-
-			// 检查是否有重复的好友邀请请求
-			lastTime := tempFriendInviteSent[msgQQ.Flag] // 获取上一次收到该请求的时间
-			nowTime := time.Now().Unix()                 // 获取当前时间的 Unix 时间戳
+			// 有一个来自gocq的重发问题
+			lastTime := tempFriendInviteSent[msgQQ.Flag]
+			nowTime := time.Now().Unix()
 			if nowTime-lastTime < 20*60 {
-				// 如果两次请求的时间间隔小于 20 分钟，则忽略此次请求
+				// 保留20s
 				return
 			}
-			tempFriendInviteSent[msgQQ.Flag] = nowTime // 更新最后一次收到该请求的时间
+			tempFriendInviteSent[msgQQ.Flag] = nowTime
 
-			// 解析请求中的验证信息
+			// {"comment":"123","flag":"1647619872000000","post_type":"request","request_type":"friend","self_id":222,"time":1647619871,"user_id":111}
 			var comment string
 			if msgQQ.Comment != "" {
-				comment = strings.TrimSpace(msgQQ.Comment)          // 去除验证信息的首尾空白字符
-				comment = strings.ReplaceAll(comment, "\u00a0", "") // 移除验证信息中的特殊空格字符
+				comment = strings.TrimSpace(msgQQ.Comment)
+				comment = strings.ReplaceAll(comment, "\u00a0", "")
 			}
 
-			// 获取预期的验证信息
 			toMatch := strings.TrimSpace(session.Parent.FriendAddComment)
-			var willAccept bool
-
+			willAccept := comment == DiceFormat(ctx, toMatch)
 			if toMatch == "" {
-				willAccept = true // 如果没有预期的验证信息，则自动接受
-			} else {
-				// 使用正则表达式进行匹配
-				re, err := regexp.Compile(DiceFormat(ctx, toMatch))
-				if err != nil {
-					willAccept = false
-				} else {
-					willAccept = re.MatchString(comment) // 验证信息是否匹配正则表达式
-				}
+				willAccept = true
 			}
 
 			if !willAccept {
-				// 如果验证信息不匹配，尝试从验证信息中提取回答
+				// 如果是问题校验，只填写回答即可
 				re := regexp.MustCompile(`\n回答:([^\n]+)`)
 				m := re.FindAllStringSubmatch(comment, -1)
 
 				var items []string
 				for _, i := range m {
-					items = append(items, i[1]) // 提取所有回答
+					items = append(items, i[1])
 				}
 
-				// 使用正则表达式分割预期的验证信息
 				re2 := regexp.MustCompile(`\s+`)
 				m2 := re2.Split(toMatch, -1)
 
 				if len(m2) == len(items) {
 					ok := true
 					for i := 0; i < len(m2); i++ {
-						// 使用正则表达式进行匹配
-						reItem, err := regexp.Compile(m2[i])
-						if err != nil || !reItem.MatchString(items[i]) {
+						if m2[i] != items[i] {
 							ok = false
 							break
 						}
 					}
-					willAccept = ok // 如果提取的回答与预期的验证信息一致，则接受请求
+					willAccept = ok
 				}
 			}
 
 			if comment == "" {
-				comment = "(无)" // 如果验证信息为空，则标记为“(无)”
+				comment = "(无)"
 			} else {
-				comment = strconv.Quote(comment) // 否则对验证信息进行转义
+				comment = strconv.Quote(comment)
 			}
 
 			// 检查黑名单
@@ -707,31 +693,29 @@ func (pa *PlatformAdapterGocq) Serve() int {
 					} else {
 						extra = "。回答错误，且为被禁止用户，准备自动拒绝"
 					}
-					willAccept = false // 如果用户在黑名单中，则拒绝请求
+					willAccept = false
 				}
 			}
 
 			if pa.IgnoreFriendRequest {
-				extra += "。由于设置了忽略邀请，此信息仅为通报" // 如果设置了忽略好友请求，则仅记录信息
+				extra += "。由于设置了忽略邀请，此信息仅为通报"
 			}
 
-			// 记录收到的好友邀请请求
-			txt := fmt.Sprintf("收到QQ好友邀请: 邀请人:%s, 验证信息: \n%s, 是否自动同意: \n%t%s", msgQQ.UserID, comment, willAccept, extra)
+			txt := fmt.Sprintf("收到QQ好友邀请: 邀请人:%s, 验证信息: %s, 是否自动同意: %t%s", msgQQ.UserID, comment, willAccept, extra)
 			log.Info(txt)
 			ctx.Notice(txt)
 
-			// 如果设置了忽略好友请求，则不处理请求
+			// 忽略邀请
 			if pa.IgnoreFriendRequest {
 				return
 			}
 
-			// 等待一段随机时间后处理请求
 			time.Sleep(time.Duration((0.8 + rand.Float64()) * float64(time.Second)))
 
 			if willAccept {
-				pa.SetFriendAddRequest(msgQQ.Flag, true, "", "") // 接受好友请求
+				pa.SetFriendAddRequest(msgQQ.Flag, true, "", "")
 			} else {
-				pa.SetFriendAddRequest(msgQQ.Flag, false, "", "验证信息不符") // 拒绝好友请求
+				pa.SetFriendAddRequest(msgQQ.Flag, false, "", "验证信息不符")
 			}
 			return
 		}
@@ -960,26 +944,8 @@ func (pa *PlatformAdapterGocq) Serve() int {
 				}
 
 				txt := fmt.Sprintf("被踢出群: 在QQ群组<%s>(%s)中被踢出，操作者:<%s>(%s)%s", groupName, msgQQ.GroupID, userName, msgQQ.OperatorID, extra)
-				//兼容溯洄warning
-				eventGroup, _ := strconv.Atoi(strings.ReplaceAll(msg.GroupID, "QQ-Group:", ""))
-				eventQQ, _ := strconv.Atoi(strings.ReplaceAll(opUID, "QQ:", ""))
-				kickwarning := warningMessage{
-					Wid:       0,
-					Type:      "kick",
-					Danger:    2,
-					FromGroup: int64(eventGroup),
-					FromQQ:    int64(eventQQ),
-					Time:      time.Now().Format("2006-01-02 15:04:05"),
-					Note:      "",
-					Comment:   txt,
-				}
-				kickwarning_json, _ := json.MarshalIndent(kickwarning, "", "\t")
-				kickwarning_txt := string(kickwarning_json)
-				log.Info(kickwarning_txt)
-				ctx.Notice(kickwarning_txt)
 				log.Info(txt)
 				ctx.Notice(txt)
-
 			}
 			return
 		}
@@ -1007,23 +973,6 @@ func (pa *PlatformAdapterGocq) Serve() int {
 
 				ctx.Dice.BanList.AddScoreByGroupMuted(opUID, msg.GroupID, ctx)
 				txt := fmt.Sprintf("被禁言: 在群组<%s>(%s)中被禁言，时长%d秒，操作者:<%s>(%s)", groupName, msgQQ.GroupID, msgQQ.Duration, userName, msgQQ.OperatorID)
-				//兼容溯洄warning
-				eventGroup, _ := strconv.Atoi(strings.ReplaceAll(msg.GroupID, "QQ-Group:", ""))
-				eventQQ, _ := strconv.Atoi(strings.ReplaceAll(opUID, "QQ:", ""))
-				mutewarning := warningMessage{
-					Wid:       0,
-					Type:      "ban",
-					Danger:    2,
-					FromGroup: int64(eventGroup),
-					FromQQ:    int64(eventQQ),
-					Time:      time.Now().Format("2006-01-02 15:04:05"),
-					Note:      "",
-					Comment:   txt,
-				}
-				mutewarning_json, _ := json.MarshalIndent(mutewarning, "", "\t")
-				mutewarning_txt := string(mutewarning_json)
-				log.Info(mutewarning_txt)
-				ctx.Notice(mutewarning_txt)
 				log.Info(txt)
 				ctx.Notice(txt)
 			}

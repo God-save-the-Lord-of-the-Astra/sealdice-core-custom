@@ -416,6 +416,7 @@ func V150Upgrade() bool {
 		return false
 	}
 	if exists {
+		// 表格已经存在，说明转换完成，退出
 		return true
 	}
 
