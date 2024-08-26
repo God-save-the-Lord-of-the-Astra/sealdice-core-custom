@@ -44,7 +44,7 @@ var (
 	// VERSION_MAIN 主版本号
 	VERSION_MAIN = "1.5.0"
 	// VERSION_PRERELEASE 先行版本号
-	VERSION_PRERELEASE = "-custom"
+	VERSION_PRERELEASE = "-custom-rc.2"
 	// VERSION_BUILD_METADATA 版本编译信息
 	VERSION_BUILD_METADATA = ""
 
@@ -153,55 +153,62 @@ type ExtDefaultSettingItemSlice []*ExtDefaultSettingItem
 
 // 强制coc7排序在较前位置
 
+type BlackServerListWithWeight struct {
+	ServerName   string `yaml:"server_name" json:"server_name"`     // 云黑服务器名称
+	ServerUrl    string `yaml:"server_url" json:"server_url"`       // 云黑服务器地址
+	ServerWeight int    `yaml:"server_weight" json:"server_weight"` // 云黑服务器权重
+}
+
 func (x ExtDefaultSettingItemSlice) Len() int           { return len(x) }
 func (x ExtDefaultSettingItemSlice) Less(i, _ int) bool { return x[i].Name == "coc7" }
 func (x ExtDefaultSettingItemSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 type Dice struct {
-	ImSession               *IMSession             `yaml:"imSession" jsbind:"imSession"`
-	CmdMap                  CmdMapCls              `yaml:"-" json:"-"`
-	ExtList                 []*ExtInfo             `yaml:"-"`
-	RollParser              *DiceRollParser        `yaml:"-"`
-	CommandCompatibleMode   bool                   `yaml:"commandCompatibleMode"`
-	LastSavedTime           *time.Time             `yaml:"lastSavedTime"`
-	LastUpdatedTime         int64                  `yaml:"-"`
-	TextMap                 map[string]*wr.Chooser `yaml:"-"`
-	BaseConfig              DiceConfig             `yaml:"-"`
-	DBData                  *sqlx.DB               `yaml:"-"`                                    // 数据库对象
-	DBLogs                  *sqlx.DB               `yaml:"-"`                                    // 数据库对象
-	Logger                  *zap.SugaredLogger     `yaml:"-"`                                    // 日志
-	LogWriter               *logger.WriterX        `yaml:"-"`                                    // 用于api的log对象
-	IsDeckLoading           bool                   `yaml:"-"`                                    // 正在加载中
-	DeckList                []*DeckInfo            `yaml:"deckList" jsbind:"deckList"`           // 牌堆信息
-	CommandPrefix           []string               `yaml:"commandPrefix" jsbind:"commandPrefix"` // 指令前导
-	DiceMasters             []string               `yaml:"diceMasters" jsbind:"diceMasters"`     // 骰主设置，需要格式: 平台:帐号
-	NoticeIDs               []string               `yaml:"noticeIds"`                            // 通知ID
-	OnlyLogCommandInGroup   bool                   `yaml:"onlyLogCommandInGroup"`                // 日志中仅记录命令
-	OnlyLogCommandInPrivate bool                   `yaml:"onlyLogCommandInPrivate"`              // 日志中仅记录命令
-	VersionCode             int                    `json:"versionCode"`                          // 版本ID(配置文件)
-	MessageDelayRangeStart  float64                `yaml:"messageDelayRangeStart"`               // 指令延迟区间
-	MessageDelayRangeEnd    float64                `yaml:"messageDelayRangeEnd"`
-	WorkInQQChannel         bool                   `yaml:"workInQQChannel"`
-	QQChannelAutoOn         bool                   `yaml:"QQChannelAutoOn"`         // QQ频道中自动开启(默认不开)
-	QQChannelLogMessage     bool                   `yaml:"QQChannelLogMessage"`     // QQ频道中记录消息(默认不开)
-	QQEnablePoke            bool                   `yaml:"QQEnablePoke"`            // 启用戳一戳
-	TextCmdTrustOnly        bool                   `yaml:"textCmdTrustOnly"`        // 只允许信任用户或master使用text指令
-	IgnoreUnaddressedBotCmd bool                   `yaml:"ignoreUnaddressedBotCmd"` // 不响应群聊裸bot指令
-	UILogLimit              int64                  `yaml:"UILogLimit"`
-	FriendAddComment        string                 `yaml:"friendAddComment"` // 加好友验证信息
-	MasterUnlockCode        string                 `yaml:"-"`                // 解锁码，每20分钟变化一次，使用后立即变化
-	MasterUnlockCodeTime    int64                  `yaml:"-"`
-	CustomReplyConfigEnable bool                   `yaml:"customReplyConfigEnable"`
-	CustomReplyConfig       []*ReplyConfig         `yaml:"-"`
-	RefuseGroupInvite       bool                   `yaml:"refuseGroupInvite"`    // 拒绝加入新群
-	UpgradeWindowID         string                 `yaml:"upgradeWindowId"`      // 执行升级指令的窗口
-	UpgradeEndpointID       string                 `yaml:"upgradeEndpointId"`    // 执行升级指令的端点
-	BotExtFreeSwitch        bool                   `yaml:"botExtFreeSwitch"`     // 允许任意人员开关: 否则邀请者、群主、管理员、master有权限
-	TrustOnlyMode           bool                   `yaml:"trustOnlyMode"`        // 只有信任的用户/master可以拉群和使用
-	AliveNoticeEnable       bool                   `yaml:"aliveNoticeEnable"`    // 定时通知
-	AliveNoticeValue        string                 `yaml:"aliveNoticeValue"`     // 定时通知间隔
-	ReplyDebugMode          bool                   `yaml:"replyDebugMode"`       // 回复调试
-	PlayerNameWrapEnable    bool                   `yaml:"playerNameWrapEnable"` // 启用玩家名称外框
+	ImSession               *IMSession                  `yaml:"imSession" jsbind:"imSession"`
+	CmdMap                  CmdMapCls                   `yaml:"-" json:"-"`
+	ExtList                 []*ExtInfo                  `yaml:"-"`
+	RollParser              *DiceRollParser             `yaml:"-"`
+	CommandCompatibleMode   bool                        `yaml:"commandCompatibleMode"`
+	LastSavedTime           *time.Time                  `yaml:"lastSavedTime"`
+	LastUpdatedTime         int64                       `yaml:"-"`
+	TextMap                 map[string]*wr.Chooser      `yaml:"-"`
+	BaseConfig              DiceConfig                  `yaml:"-"`
+	DBData                  *sqlx.DB                    `yaml:"-"`                                    // 数据库对象
+	DBLogs                  *sqlx.DB                    `yaml:"-"`                                    // 数据库对象
+	Logger                  *zap.SugaredLogger          `yaml:"-"`                                    // 日志
+	LogWriter               *logger.WriterX             `yaml:"-"`                                    // 用于api的log对象
+	IsDeckLoading           bool                        `yaml:"-"`                                    // 正在加载中
+	DeckList                []*DeckInfo                 `yaml:"deckList" jsbind:"deckList"`           // 牌堆信息
+	CommandPrefix           []string                    `yaml:"commandPrefix" jsbind:"commandPrefix"` // 指令前导
+	DiceMasters             []string                    `yaml:"diceMasters" jsbind:"diceMasters"`     // 骰主设置，需要格式: 平台:帐号
+	NoticeIDs               []string                    `yaml:"noticeIds"`                            // 通知ID
+	OnlyLogCommandInGroup   bool                        `yaml:"onlyLogCommandInGroup"`                // 日志中仅记录命令
+	OnlyLogCommandInPrivate bool                        `yaml:"onlyLogCommandInPrivate"`              // 日志中仅记录命令
+	VersionCode             int                         `json:"versionCode"`                          // 版本ID(配置文件)
+	MessageDelayRangeStart  float64                     `yaml:"messageDelayRangeStart"`               // 指令延迟区间
+	MessageDelayRangeEnd    float64                     `yaml:"messageDelayRangeEnd"`
+	WorkInQQChannel         bool                        `yaml:"workInQQChannel"`
+	QQChannelAutoOn         bool                        `yaml:"QQChannelAutoOn"`         // QQ频道中自动开启(默认不开)
+	QQChannelLogMessage     bool                        `yaml:"QQChannelLogMessage"`     // QQ频道中记录消息(默认不开)
+	QQEnablePoke            bool                        `yaml:"QQEnablePoke"`            // 启用戳一戳
+	TextCmdTrustOnly        bool                        `yaml:"textCmdTrustOnly"`        // 只允许信任用户或master使用text指令
+	IgnoreUnaddressedBotCmd bool                        `yaml:"ignoreUnaddressedBotCmd"` // 不响应群聊裸bot指令
+	UILogLimit              int64                       `yaml:"UILogLimit"`
+	FriendAddComment        string                      `yaml:"friendAddComment"` // 加好友验证信息
+	MasterUnlockCode        string                      `yaml:"-"`                // 解锁码，每20分钟变化一次，使用后立即变化
+	MasterUnlockCodeTime    int64                       `yaml:"-"`
+	CustomReplyConfigEnable bool                        `yaml:"customReplyConfigEnable"`
+	CustomReplyConfig       []*ReplyConfig              `yaml:"-"`
+	RefuseGroupInvite       bool                        `yaml:"refuseGroupInvite"`    // 拒绝加入新群
+	UpgradeWindowID         string                      `yaml:"upgradeWindowId"`      // 执行升级指令的窗口
+	UpgradeEndpointID       string                      `yaml:"upgradeEndpointId"`    // 执行升级指令的端点
+	BotExtFreeSwitch        bool                        `yaml:"botExtFreeSwitch"`     // 允许任意人员开关: 否则邀请者、群主、管理员、master有权限
+	TrustOnlyMode           bool                        `yaml:"trustOnlyMode"`        // 只有信任的用户/master可以拉群和使用
+	AliveNoticeEnable       bool                        `yaml:"aliveNoticeEnable"`    // 定时通知
+	AliveNoticeValue        string                      `yaml:"aliveNoticeValue"`     // 定时通知间隔
+	ReplyDebugMode          bool                        `yaml:"replyDebugMode"`       // 回复调试
+	PlayerNameWrapEnable    bool                        `yaml:"playerNameWrapEnable"` // 启用玩家名称外框
+	BlackServerList         []BlackServerListWithWeight `yaml:"blackServer"`          // 云黑服务器列表
 
 	RateLimitEnabled         bool       `yaml:"rateLimitEnabled"`      // 启用频率限制 (刷屏限制)
 	PersonalReplenishRateStr string     `yaml:"personalReplenishRate"` // 个人刷屏警告速率，字符串格式

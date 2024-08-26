@@ -776,7 +776,7 @@ func setupBaseTextTemplate(d *Dice) {
 				{"帮助:其他\n.find 克苏鲁星之眷族 //查找对应怪物资料\n.find 70尺 法术 // 查找关联资料（仅在全文搜索开启时可用）", 1},
 			},
 			"骰子执行异常": {
-				{"指令执行异常，请联系开发者，群号524364253，非常感谢。", 1},
+				{"指令执行异常，请联系开发者，非常感谢。", 1},
 			},
 			"骰子开启": {
 				{"{常量:APPNAME} 已启用 {常量:VERSION}", 1},
@@ -2107,6 +2107,7 @@ func (d *Dice) loads() {
 		d.LogSizeNoticeCount = dNew.LogSizeNoticeCount
 		d.LogSizeNoticeEnable = dNew.LogSizeNoticeEnable
 		d.PlayerNameWrapEnable = dNew.PlayerNameWrapEnable
+		d.BlackServerList = dNew.BlackServerList
 		d.MailEnable = dNew.MailEnable
 		d.MailFrom = dNew.MailFrom
 		d.MailPassword = dNew.MailPassword

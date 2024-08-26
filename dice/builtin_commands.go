@@ -536,8 +536,9 @@ func (d *Dice) registerCoreCommands() {
 			erasedCnt := 0
 			erasedNewCnt := 0
 
-			var val = cmdArgs.GetArgN(1)
-			switch strings.ToLower(val) {
+			val := strings.ToLower(cmdArgs.GetArgN(1))
+			subval := strings.ToLower(cmdArgs.GetArgN(2))
+			switch val {
 			case "sync":
 				ReplyToSender(ctx, msg, "正在同步云黑...")
 				time.Sleep(1000 * time.Millisecond)
@@ -578,6 +579,136 @@ func (d *Dice) registerCoreCommands() {
 				}
 				ReplyToSender(ctx, msg, fmt.Sprintf("共计从溯洄云黑api获取黑名单群组:%d个，新增:%d个；黑名单用户:%d名，新增:%d名。并有%d组已在云端消除黑名单记录，新增%d组。", blackGroupCnt, blackGroupNewCnt, blackQQCnt, blackQQNewCnt, erasedCnt, erasedNewCnt))
 				return CmdExecuteResult{Matched: true, Solved: true}
+			case "server":
+				switch subval {
+				case "list":
+					text := ""
+					for _, s := range d.BlackServerList {
+						text = fmt.Sprintf("%s\t-%s  %d\n", text, s.ServerName, s.ServerWeight)
+					}
+					if text == "" {
+						text = "\t-无\t\t\t无"
+					}
+					reply := "云黑服务器列表: \n\t-名称\t权重\n" + text
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+
+				case "add":
+					newServerName := cmdArgs.GetArgN(3)
+					newServerUrl := cmdArgs.GetArgN(4)
+					newsw := cmdArgs.GetArgN(5)
+					if newServerName == "" {
+						ReplyToSender(ctx, msg, "请写出云黑服务器名称")
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
+					if newServerUrl == "" {
+						ReplyToSender(ctx, msg, "请写出云黑服务器地址")
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
+					newServerWeight := 1
+					if newsw == "" {
+						newServerWeight = 1
+					} else {
+						newServerWeight, _ = strconv.Atoi(newsw)
+					}
+					for index, item := range d.BlackServerList {
+						if item.ServerName == newServerName {
+							d.BlackServerList[index].ServerUrl = newServerUrl
+							d.BlackServerList[index].ServerWeight = newServerWeight
+							reply := fmt.Sprintf("%s%s%s%s%s%d", "成功编辑云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+							ReplyToSender(ctx, msg, reply)
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
+					}
+					newServerItem := BlackServerListWithWeight{
+						ServerName:   newServerName,
+						ServerUrl:    newServerUrl,
+						ServerWeight: newServerWeight,
+					}
+					d.BlackServerList = append(d.BlackServerList, newServerItem)
+					reply := fmt.Sprintf("%s%s%s%s%s%d", "成功添加云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+					d.Save(false)
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+
+				case "+":
+					newServerName := cmdArgs.GetArgN(3)
+					newServerUrl := cmdArgs.GetArgN(4)
+					newsw := cmdArgs.GetArgN(5)
+					if newServerName == "" {
+						ReplyToSender(ctx, msg, "请写出云黑服务器名称")
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
+					if newServerUrl == "" {
+						ReplyToSender(ctx, msg, "请写出云黑服务器地址")
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
+					newServerWeight := 1
+					if newsw == "" {
+						newServerWeight = 1
+					} else {
+						newServerWeight, _ = strconv.Atoi(newsw)
+					}
+					for index, item := range d.BlackServerList {
+						if item.ServerName == newServerName {
+							d.BlackServerList[index].ServerUrl = newServerUrl
+							d.BlackServerList[index].ServerWeight = newServerWeight
+							reply := fmt.Sprintf("%s%s%s%s%s%d", "成功编辑云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+							ReplyToSender(ctx, msg, reply)
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
+					}
+					newServerItem := BlackServerListWithWeight{
+						ServerName:   newServerName,
+						ServerUrl:    newServerUrl,
+						ServerWeight: newServerWeight,
+					}
+					d.BlackServerList = append(d.BlackServerList, newServerItem)
+					reply := fmt.Sprintf("%s%s%s%s%s%d", "成功添加云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+					d.Save(false)
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+
+				case "del":
+					newServerElement := cmdArgs.GetArgN(3)
+					reply := ""
+					for index, item := range d.BlackServerList {
+						if item.ServerName == newServerElement || item.ServerUrl == newServerElement {
+							delServerName := item.ServerName
+							delServerUrl := item.ServerUrl
+							delServerWeight := item.ServerWeight
+							d.BlackServerList = append(d.BlackServerList[:index], d.BlackServerList[index+1:]...)
+							reply = fmt.Sprintf("%s%s%s%s%s%d", "成功删除云黑服务器: ", delServerName, "\n服务器地址: ", delServerUrl, "\n服务器权重: ", delServerWeight)
+						}
+					}
+					if reply == "" {
+						reply = "没有找到指定云黑服务器，请先添加。"
+					}
+					d.Save(false)
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+
+				case "-":
+					newServerElement := cmdArgs.GetArgN(3)
+					reply := ""
+					for index, item := range d.BlackServerList {
+						if item.ServerName == newServerElement || item.ServerUrl == newServerElement {
+							delServerName := item.ServerName
+							delServerUrl := item.ServerUrl
+							delServerWeight := item.ServerWeight
+							d.BlackServerList = append(d.BlackServerList[:index], d.BlackServerList[index+1:]...)
+							reply = fmt.Sprintf("%s%s%s%s%s%d", "成功删除云黑服务器: ", delServerName, "\n服务器地址: ", delServerUrl, "\n服务器权重: ", delServerWeight)
+						}
+					}
+					if reply == "" {
+						reply = "没有找到指定云黑服务器，请先添加。"
+					}
+					d.Save(false)
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+				default:
+					return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+				}
 			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
@@ -2853,6 +2984,32 @@ func (d *Dice) registerCoreCommands() {
 						srcText = strings.TrimSpace(srcText)
 						for index := range d.TextMapRaw["核心"]["骰子名字"] {
 							d.TextMapRaw["核心"]["骰子名字"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
+					}
+				}
+			case "unknownerror":
+				if cmdNum == 1 || subval == "help" {
+					text := DiceFormatReplyshow(val, ctx, "核心:骰子执行异常", "指令执行异常，请联系开发者，非常感谢。")
+					ReplyToSender(ctx, msg, text)
+				} else {
+					if subval == "clr" || subval == "del" || subval == "default" {
+						for index := range d.TextMapRaw["核心"]["骰子执行异常"] {
+							srcText := "指令执行异常，请联系开发者，非常感谢。"
+							d.TextMapRaw["核心"]["骰子执行异常"][index][0] = srcText
+						}
+						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+						d.GenerateTextMap()
+						d.SaveText()
+						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
+					} else {
+						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+						srcText = strings.TrimSpace(srcText)
+						for index := range d.TextMapRaw["核心"]["骰子执行异常"] {
+							d.TextMapRaw["核心"]["骰子执行异常"][index][0] = srcText
 						}
 						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
 						d.GenerateTextMap()

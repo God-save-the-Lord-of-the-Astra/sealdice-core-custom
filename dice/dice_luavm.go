@@ -17,7 +17,6 @@ import (
 )
 
 func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) {
-	/*//----------------------------------------------------------------
 	msgTable := LuaVM.NewTable()
 
 	// 设置Message的字段
@@ -29,6 +28,7 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	msgTable.RawSetString("Message", lua.LString(msg.Message))
 	msgTable.RawSetString("Platform", lua.LString(msg.Platform))
 	msgTable.RawSetString("GroupName", lua.LString(msg.GroupName))
+	msgTable.RawSetString("TmpUID", lua.LString(msg.TmpUID))
 
 	// 设置Sender的字段
 	senderTable := LuaVM.NewTable()
@@ -37,27 +37,6 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 
 	// 将senderTable添加到msgTable中
 	msgTable.RawSetString("sender", senderTable)
-
-	// Shiki散装变量兼容
-
-	ShikiMsgFromQQ := strings.ReplaceAll(msg.Sender.UserID, "QQ:", "")
-	ShikiMsgFromGroup := strings.ReplaceAll(msg.GroupID, "QQ-Group:", "")
-	ShikiMsgFromUID, _ := strconv.Atoi(strings.ReplaceAll(msg.Sender.UserID, "QQ:", ""))
-	ShikiMsgFromGID, _ := strconv.Atoi(strings.ReplaceAll(msg.GroupID, "QQ-Group:", ""))
-	ShikiMsgFromMsg := cmdArgs.RawText
-	ShikiMsgSuffix := cmdArgs.RawArgs
-	ShikiMsgCmdTable := cmdArgs.Args
-	msgTable.RawSetString("fromQQ", lua.LString(ShikiMsgFromQQ))
-	msgTable.RawSetString("fromGroup", lua.LString(ShikiMsgFromGroup))
-	msgTable.RawSetString("fromUID", lua.LNumber(ShikiMsgFromUID))
-	msgTable.RawSetString("fromGID", lua.LNumber(ShikiMsgFromGID))
-	msgTable.RawSetString("fromMsg", lua.LString(ShikiMsgFromMsg))
-	msgTable.RawSetString("suffix", lua.LString(ShikiMsgSuffix))
-	MsgCmdTable := LuaVM.NewTable()
-	for _, arg := range ShikiMsgCmdTable {
-		MsgCmdTable.Append(lua.LString(arg))
-	}
-	LuaVM.SetField(msgTable, "CmdTab", MsgCmdTable)
 
 	//----------------------------------------------------------------
 	ctxTable := LuaVM.NewTable()
@@ -82,6 +61,9 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 		LuaVM.SetField(groupTable, "GroupWelcomeMessage", lua.LString(ctx.Group.GroupWelcomeMessage))
 		LuaVM.SetField(groupTable, "EnteredTime", lua.LNumber(ctx.Group.EnteredTime))
 		LuaVM.SetField(groupTable, "InviteUserID", lua.LString(ctx.Group.InviteUserID))
+		LuaVM.SetField(groupTable, "TmpPlayerNum", lua.LNumber(ctx.Group.TmpPlayerNum))
+		LuaVM.SetField(groupTable, "UpdatedAtTime", lua.LNumber(ctx.Group.UpdatedAtTime))
+		LuaVM.SetField(groupTable, "DefaultHelpGroup", lua.LString(ctx.Group.DefaultHelpGroup))
 		LuaVM.SetField(ctxTable, "Group", groupTable)
 	}
 
@@ -90,9 +72,32 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 		playerTable := LuaVM.NewTable()
 		LuaVM.SetField(playerTable, "Name", lua.LString(ctx.Player.Name))
 		LuaVM.SetField(playerTable, "UserID", lua.LString(ctx.Player.UserID))
+		LuaVM.SetField(playerTable, "InGroup", lua.LBool(ctx.Player.InGroup))
 		LuaVM.SetField(playerTable, "LastCommandTime", lua.LNumber(ctx.Player.LastCommandTime))
+		LuaVM.SetField(playerTable, "RateLimitWarned", lua.LBool(ctx.Player.RateLimitWarned))
 		LuaVM.SetField(playerTable, "AutoSetNameTemplate", lua.LString(ctx.Player.AutoSetNameTemplate))
+		LuaVM.SetField(playerTable, "DiceSideNum", lua.LNumber(ctx.Player.DiceSideNum))
+		LuaVM.SetField(playerTable, "UpdatedAtTime", lua.LNumber(ctx.Player.UpdatedAtTime))
+		LuaVM.SetField(playerTable, "RecentUsedTime", lua.LNumber(ctx.Player.RecentUsedTime))
 		LuaVM.SetField(ctxTable, "Player", playerTable)
+	}
+
+	if ctx.EndPoint != nil {
+		endPointTable := LuaVM.NewTable()
+		LuaVM.SetField(endPointTable, "Name", lua.LString(ctx.EndPoint.ID))
+		LuaVM.SetField(endPointTable, "Nickname", lua.LString(ctx.EndPoint.Nickname))
+		LuaVM.SetField(endPointTable, "UserID", lua.LString(ctx.EndPoint.UserID))
+		LuaVM.SetField(endPointTable, "GroupNum", lua.LNumber(ctx.EndPoint.GroupNum))
+		LuaVM.SetField(endPointTable, "State", lua.LString(ctx.EndPoint.State))
+		LuaVM.SetField(endPointTable, "CmdExecutedNum", lua.LNumber(ctx.EndPoint.CmdExecutedNum))
+		LuaVM.SetField(endPointTable, "CmdExecutedLastTime", lua.LNumber(ctx.EndPoint.CmdExecutedLastTime))
+		LuaVM.SetField(endPointTable, "OnlineTotalTime", lua.LNumber(ctx.EndPoint.OnlineTotalTime))
+		LuaVM.SetField(endPointTable, "Platform", lua.LString(ctx.EndPoint.Platform))
+		LuaVM.SetField(endPointTable, "RelWorkDir", lua.LString(ctx.EndPoint.RelWorkDir))
+		LuaVM.SetField(endPointTable, "Enable", lua.LBool(ctx.EndPoint.Enable))
+		LuaVM.SetField(endPointTable, "ProtocolType", lua.LString(ctx.EndPoint.ProtocolType))
+		LuaVM.SetField(endPointTable, "IsPublic", lua.LBool(ctx.EndPoint.IsPublic))
+		LuaVM.SetField(ctxTable, "EndPoint", endPointTable)
 	}
 
 	//----------------------------------------------------------------
@@ -139,16 +144,15 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	LuaVM.SetField(cmdArgsTable, "RawText", lua.LString(cmdArgs.RawText))
 
 	//----------------------------------------------------------------
-	LuaVM.SetGlobal("cmdArgs", cmdArgsTable)
-	// Set the table to the global variable "ctx"
-	LuaVM.SetGlobal("ctx", ctxTable)
-	// 将msgTable注册为全局变量"msg"
-	LuaVM.SetGlobal("msg", msgTable)*/
-	//----------------------------------------------------------------
 	msgUD := LuaVM.NewUserData()
 	msgUD.Value = msg
 	msgMeta := LuaVM.NewTypeMetatable("Message")
-	msgUD.Metatable = msgMeta
+	msgUD.Metatable = LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
+		"__index": func(LuaVM *lua.LState) int {
+			LuaVM.Push(msgTable)
+			return 1
+		},
+	})
 	LuaVM.SetGlobal("Message", msgMeta)
 	LuaVM.SetField(msgMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
 		"Time": func(LuaVM *lua.LState) int {
@@ -207,7 +211,12 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	ctxUD := LuaVM.NewUserData()
 	ctxUD.Value = ctx
 	ctxMeta := LuaVM.NewTypeMetatable("MsgContext")
-	ctxUD.Metatable = ctxMeta
+	ctxUD.Metatable = LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
+		"__index": func(LuaVM *lua.LState) int {
+			LuaVM.Push(ctxTable)
+			return 1
+		},
+	})
 	LuaVM.SetGlobal("MsgContext", ctxMeta)
 	LuaVM.SetField(ctxMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
 		"MessageType": func(LuaVM *lua.LState) int {
@@ -291,7 +300,12 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	cmdArgsUD := LuaVM.NewUserData()
 	cmdArgsUD.Value = cmdArgs
 	cmdArgsMeta := LuaVM.NewTypeMetatable("CmdArgs")
-	cmdArgsUD.Metatable = cmdArgsMeta
+	cmdArgsUD.Metatable = LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
+		"__index": func(LuaVM *lua.LState) int {
+			LuaVM.Push(cmdArgsTable)
+			return 1
+		},
+	})
 	LuaVM.SetGlobal("CmdArgs", cmdArgsMeta)
 	LuaVM.SetField(cmdArgsMeta, "__index", LuaVM.SetFuncs(LuaVM.NewTable(), map[string]lua.LGFunction{
 		"Command": func(LuaVM *lua.LState) int {
@@ -391,7 +405,10 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	ShikiMsgFromUID, _ := strconv.Atoi(strings.ReplaceAll(msg.Sender.UserID, "QQ:", ""))
 	ShikiMsgFromGID, _ := strconv.Atoi(strings.ReplaceAll(msg.GroupID, "QQ-Group:", ""))
 	ShikiMsgFromMsg := cmdArgs.RawText
+	ShikiMsgTimeStamp := msg.Time
 	ShikiMsgSuffix := cmdArgs.RawArgs
+	ShikiMsgPrefix := strings.TrimSpace(strings.ReplaceAll(cmdArgs.RawText, cmdArgs.RawArgs, ""))
+	ShikiMsgID := fmt.Sprintf("%v", msg.RawID)
 	ShikiMsgCmdTable := cmdArgs.Args
 
 	// Register Shiki variables
@@ -401,6 +418,9 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	LuaVM.SetField(ShikiMsgTable, "fromGID", lua.LNumber(ShikiMsgFromGID))
 	LuaVM.SetField(ShikiMsgTable, "fromMsg", lua.LString(ShikiMsgFromMsg))
 	LuaVM.SetField(ShikiMsgTable, "suffix", lua.LString(ShikiMsgSuffix))
+	LuaVM.SetField(ShikiMsgTable, "prefix", lua.LString(ShikiMsgPrefix))
+	LuaVM.SetField(ShikiMsgTable, "timestamp", lua.LNumber(ShikiMsgTimeStamp))
+	LuaVM.SetField(ShikiMsgTable, "msgid", lua.LString(ShikiMsgID))
 	MsgCmdTable := LuaVM.NewTable()
 	for _, arg := range ShikiMsgCmdTable {
 		MsgCmdTable.Append(lua.LString(arg))
@@ -414,7 +434,7 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	DreamMsgGroup_Nick := ctx.Group.GroupName
 	DreamMsgSender_Nick := ctx.Player.Name
 	DreamMsgMessage_Text := cmdArgs.RawText
-	DreamMsgSender_Jrrp, _ := VarGetValueInt64(ctx, "$人品")
+	DreamMsgSender_Jrrp, _ := VarGetValueInt64(ctx, "$t人品")
 	DreamMsgTable := LuaVM.NewTable()
 	DreamGroupTable := LuaVM.NewTable()
 	DreamMessageTable := LuaVM.NewTable()
@@ -457,7 +477,7 @@ func luaVarDelValue(LuaVM *lua.LState) int {
 
 func luaVarGetValueInt(LuaVM *lua.LState) int {
 	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
-	s := LuaVM.CheckString(1)
+	s := LuaVM.CheckString(2)
 	res, exists := VarGetValueInt64(ctx, s)
 	if !exists {
 		return 0 // 返回 0 表示没有值
@@ -950,6 +970,13 @@ func luaDreamTableAdd(LuaVM *lua.LState) int {
 	LuaVM.Push(newTable)
 
 	// 返回结果表的数量
+	return 1
+}
+
+func luaDreamApiGetDiceQQ(LuaVM *lua.LState) int {
+	ctx := LuaVM.CheckUserData(1).Value.(*MsgContext)
+	DiceQQ, _ := strconv.Atoi(strings.ReplaceAll(ctx.EndPoint.UserID, "QQ:", ""))
+	LuaVM.Push(lua.LNumber(DiceQQ))
 	return 1
 }
 

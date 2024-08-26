@@ -330,6 +330,11 @@ func (dm *DiceManager) TryCreateDefault() {
 		defaultDice.MessageDelayRangeEnd = 0.1
 		defaultDice.MarkModified()
 		defaultDice.ContainerMode = dm.ContainerMode
+		defaultDice.BlackServerList = []BlackServerListWithWeight{{
+			ServerName:   "溯洄云黑",
+			ServerUrl:    "https://shiki.stringempty.xyz/blacklist/checked.json?",
+			ServerWeight: 1,
+		}}
 		dm.Dice = append(dm.Dice, defaultDice)
 	}
 }
