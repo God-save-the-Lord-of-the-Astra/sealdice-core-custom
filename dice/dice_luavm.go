@@ -1070,6 +1070,69 @@ func luaZhaoDiceSDKContains(L *lua.LState) int {
 	return 1
 }
 
+// ----------------------------------------------------------------
+
+func luaNewCmdItemInfo(LuaVM *lua.LState) int {
+	name := LuaVM.ToString(1)
+	author := LuaVM.ToString(2)
+	version := LuaVM.ToString(3)
+	official := LuaVM.ToBool(4)
+	extInfo := &ExtInfo{
+		Name:       name,
+		Author:     author,
+		Version:    version,
+		AutoActive: true,
+		IsJsExt:    false,
+		Brief:      "一个Lua自定义扩展",
+		Official:   official,
+		CmdMap:     CmdMapCls{},
+		OnCommandReceived: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) {
+		},
+		OnLoad: func() {
+		},
+		GetDescText: GetExtensionDesc,
+	}
+	extInfoUD := LuaVM.NewUserData()
+	extInfoUD.Value = extInfo
+	LuaVM.Push(extInfoUD)
+	return 1
+}
+
+func luaFind(LuaVM *lua.LState) int {
+	d := LuaVM.CheckUserData(1).Value.(*Dice)
+	name := LuaVM.ToString(2)
+	extInfoUD := d.ExtFind(name)
+	ud := LuaVM.NewUserData()
+	ud.Value = extInfoUD
+	LuaVM.Push(ud)
+	return 1
+}
+
+var extLuaPluginrunner *CmdItemInfo
+
+func luaRegister(LuaVM *lua.LState) int {
+	d := LuaVM.CheckUserData(1).Value.(*Dice)
+	extInfo := LuaVM.CheckUserData(2).Value.(*ExtInfo)
+	extKeyWord := LuaVM.CheckString(3)
+
+	defer func() {
+		if e := recover(); e != nil {
+			d.Logger.Error(e)
+		}
+	}()
+	d.RegisterExtension(extInfo)
+	if extInfo.OnLoad != nil {
+		extInfo.OnLoad()
+	}
+	d.ApplyExtDefaultSettings()
+	extInfo.CmdMap = CmdMapCls{extKeyWord: extLuaPluginrunner}
+	d.ImSession.ServiceAtNew.Range(func(key string, groupInfo *GroupInfo) bool {
+		groupInfo.ExtActive(extInfo)
+		return true
+	})
+	return 0
+}
+
 //----------------------------------------------------------------
 
 /*
@@ -1118,6 +1181,13 @@ func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdA
 	LuaVM.SetGlobal("MemberKick", LuaVM.NewFunction(luaMemberKick))
 	LuaVM.SetGlobal("DiceFormat", LuaVM.NewFunction(luaDiceFormat))
 	LuaVM.SetGlobal("DiceFormatTmpl", LuaVM.NewFunction(luaDiceFormatTmpl))
+	// ----------------------------------------------------------------
+	luaExtTable := LuaVM.NewTable()
+	LuaVM.SetField(luaExtTable, "newCmdItemInfo", LuaVM.NewFunction(luaNewCmdItemInfo))
+	LuaVM.SetField(luaExtTable, "find", LuaVM.NewFunction(luaFind))
+	LuaVM.SetField(luaExtTable, "register", LuaVM.NewFunction(luaRegister))
+	LuaVM.SetGlobal("ext", luaExtTable)
+	// ----------------------------------------------------------------
 	LuaVM.SetGlobal("shikisendMsg", LuaVM.NewFunction(luaShikiSendMsg))
 	//----------------------------------------------------------------
 	DreamLib := LuaVM.NewTable()

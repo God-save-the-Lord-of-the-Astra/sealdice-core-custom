@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"net/http"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +22,352 @@ import (
 	"github.com/juliangruber/go-intersect"
 	ds "github.com/sealdice/dicescript"
 )
+
+func handleCoreTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval string, cmdArgs *CmdArgs, d *Dice) {
+	cmdNum := len(cmdArgs.Args)
+	var key, defaultText string
+	switch val {
+	case "selfname":
+		key = "骰子名字"
+		defaultText = "风暴核心"
+	case "unknownerror":
+		key = "骰子执行异常"
+		defaultText = "指令执行异常，请联系开发者，非常感谢。"
+	case "boton":
+		key = "骰子开启"
+		defaultText = "{常量:APPNAME} 已启用 {常量:VERSION}"
+	case "botoff":
+		key = "骰子关闭"
+		defaultText = "<{核心:骰子名字}> 停止服务"
+	case "replyon":
+		key = "开启自定义回复"
+		defaultText = "<{核心:骰子名字}>已在此群内开启自定义回复！\n群内工作状态:{$t旧群内状态}-->开"
+	case "replyoff":
+		key = "关闭自定义回复"
+		defaultText = "<{核心:骰子名字}>已在此群内关闭自定义回复！\n群内工作状态:{$t旧群内状态}-->关"
+	case "addgroup":
+		key = "骰子进群"
+		defaultText = "<{核心:骰子名字}> 已经就绪。可通过.help查看手册\n[图:data/images/sealdice.png]\nCOC/DND玩家可以使用.set coc/dnd在两种模式中切换\n已搭载自动重连，如遇风控不回可稍作等待"
+	case "addfriend":
+		key = "骰子成为好友"
+		defaultText = "<{核心:骰子名字}> 已经就绪。可通过.help查看手册，请拉群测试，私聊容易被企鹅吃掉。\n[图:data/images/sealdice.png]"
+	case "groupexitannounce":
+		key = "骰子退群预告"
+		defaultText = "收到指令，5s后将退出当前群组"
+	case "groupexit":
+		key = "骰子自动退群告别语"
+		defaultText = "由于长时间不使用，{核心:骰子名字}将退出本群，感谢您的使用。"
+	case "savesetup":
+		key = "骰子保存设置"
+		defaultText = "数据已保存"
+	case "additionalstatus":
+		key = "骰子状态附加文本"
+		defaultText = "供职于{$t供职群数}个群，其中{$t启用群数}个处于开启状态。{$t群内工作状态}"
+	case "reasonofrollprefix":
+		key = "骰点_原因"
+		defaultText = "由于{$t原因}，"
+	case "rolldiceeqvt":
+		key = "骰点_单项结果文本"
+		defaultText = "{$t表达式文本}{$t计算过程}={$t计算结果}"
+	case "rolldice":
+		key = "骰点"
+		defaultText = "{$t原因句子}{$t玩家}掷出了 {$t结果文本}"
+	case "rollmultidice":
+		key = "骰点_多轮"
+		defaultText = "{$t原因句子}{$t玩家}掷骰{$t次数}次:\n{$t结果文本}"
+	default:
+		return
+	}
+
+	if cmdNum == 1 || subval == "help" || subval == "default" {
+		text := DiceFormatReplyshow(val, ctx, "核心:"+key, defaultText)
+		ReplyToSender(ctx, msg, text)
+		return
+	}
+
+	if subval == "clr" || subval == "del" || subval == "default" {
+		for index := range d.TextMapRaw["核心"][key] {
+			d.TextMapRaw["核心"][key][index][0] = defaultText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已重置词条: %s", val))
+	} else {
+		srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+		srcText = strings.TrimSpace(srcText)
+		for index := range d.TextMapRaw["核心"][key] {
+			d.TextMapRaw["核心"][key][index][0] = srcText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已将词条: %s 设为: %s", val, srcText))
+	}
+}
+
+func handleCOCTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval string, cmdArgs *CmdArgs, d *Dice) {
+	cmdNum := len(cmdArgs.Args)
+	var key, defaultText string
+	switch val {
+	case "setcocrule":
+		key = "设置房规_当前"
+		defaultText = "当前房规: {$t房规}\n{$t房规文本}"
+	case "fumble":
+		key = "判定_大失败"
+		defaultText = "大失败！"
+	case "failure":
+		key = "判定_失败"
+		defaultText = "失败！"
+	case "success":
+		key = "判定_成功_普通"
+		defaultText = "成功"
+	case "hardsuccess":
+		key = "判定_成功_困难"
+		defaultText = "困难成功"
+	case "extremesuccess":
+		key = "判定_成功_极难"
+		defaultText = "极难成功"
+	case "criticalsuccess":
+		key = "判定_大成功"
+		defaultText = "运气不错，大成功！"
+	case "musthardsuccess":
+		key = "判定_必须_困难_成功"
+		defaultText = "成功了！这要费点力气{$t附加判定结果}"
+	case "musthardfailure":
+		key = "判定_必须_困难_失败"
+		defaultText = "失败！还是有点难吧？{$t附加判定结果}"
+	case "mustextremesuccess":
+		key = "判定_必须_极难_成功"
+		defaultText = "居然成功了！运气不错啊！{$t附加判定结果}"
+	case "mustextremefailure":
+		key = "判定_必须_极难_失败"
+		defaultText = "失败了，不要太勉强自己{$t附加判定结果}"
+	case "mustcriticalsuccesssuccess":
+		key = "判定_必须_大成功_成功"
+		defaultText = "大成功！越过无数失败的命运，你握住了唯一的胜机！"
+	case "mustcriticalsuccessfailure":
+		key = "判定_必须_大成功_失败"
+		defaultText = "失败了，不出所料{$t附加判定结果}"
+	case "rollfumble":
+		key = "判定_简短_大失败"
+		defaultText = "大失败"
+	case "rollfailure":
+		key = "判定_简短_失败"
+		defaultText = "失败"
+	case "rollsuccess":
+		key = "判定_简短_成功_普通"
+		defaultText = "成功"
+	case "rollhardsuccess":
+		key = "判定_简短_成功_困难"
+		defaultText = "困难成功"
+	case "rollextremesuccess":
+		key = "判定_简短_成功_极难"
+		defaultText = "极难成功"
+	case "rollcriticalsuccess":
+		key = "判定_简短_大成功"
+		defaultText = "大成功"
+	default:
+		return
+	}
+
+	if cmdNum == 1 || subval == "help" || subval == "default" {
+		text := DiceFormatReplyshow(val, ctx, "COC:"+key, defaultText)
+		ReplyToSender(ctx, msg, text)
+		return
+	}
+
+	if subval == "clr" || subval == "del" || subval == "default" {
+		for index := range d.TextMapRaw["COC"][key] {
+			d.TextMapRaw["COC"][key][index][0] = defaultText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已重置词条: %s", val))
+	} else {
+		srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+		srcText = strings.TrimSpace(srcText)
+		for index := range d.TextMapRaw["COC"][key] {
+			d.TextMapRaw["COC"][key][index][0] = srcText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已将词条: %s 设为: %s", val, srcText))
+	}
+}
+
+func handleOtherTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval string, cmdArgs *CmdArgs, d *Dice) {
+	cmdNum := len(cmdArgs.Args)
+	var key, defaultText string
+	switch val {
+	case "jrrp":
+		key = "今日人品"
+		defaultText = "{$t玩家} 今日人品为{$t人品}，{%\n    $t人品 > 95 ? '人品爆表！',\n    $t人品 > 80 ? '运气还不错！',\n    $t人品 > 50 ? '人品还行吧',\n    $t人品 > 10 ? '今天不太行',\n    1 ? '流年不利啊！'\n%}"
+	case "decklist":
+		key = "抽牌_列表"
+		defaultText = "{$t原始列表}"
+	case "drawkey":
+		key = "抽牌_列表"
+		defaultText = "{$t原始列表}"
+	case "nodeck":
+		key = "抽牌_列表_没有牌组"
+		defaultText = "呃，没有发现任何牌组"
+	case "deckcitenotfound":
+		key = "抽牌_找不到牌组"
+		defaultText = "找不到这个牌组"
+	case "deckcitenotfoundbuthavesimilar":
+		key = "抽牌_找不到牌组_存在类似"
+		defaultText = "未找到牌组，但发现一些相似的:"
+	case "deckspliter":
+		key = "抽牌_分隔符"
+		defaultText = `\n\n`
+	case "deckresultprefix":
+		key = "抽牌_结果前缀"
+		defaultText = ``
+	case "randomnamegenerate":
+		key = "随机名字"
+		defaultText = "为{$t玩家}生成以下名字：\n{$t随机名字文本}"
+	case "randomnamespliter":
+		key = "随机名字_分隔符"
+		defaultText = "、"
+	case "poke":
+		key = "戳一戳"
+		defaultText = "{核心:骰子名字}咕踊了一下"
+	case "ping":
+		key = "ping响应"
+		defaultText = "pong！这里是{核心:骰子名字}{$t请求结果}"
+	case "lognew":
+		key = "记录_新建"
+		defaultText = `新的故事开始了，祝旅途愉快！\n记录已经开启`
+	case "logon":
+		key = "记录_开启_成功"
+		defaultText = `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`
+	case "logonsuccess":
+		key = "记录_开启_成功"
+		defaultText = `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`
+	case "logonfailnolog":
+		key = "记录_开启_失败_无此记录"
+		defaultText = `无法继续，没能找到记录: {$t记录名称}`
+	case "logonfailnotnew":
+		key = "记录_开启_失败_尚未新建"
+		defaultText = `找不到记录，请使用.log new新建记录`
+	case "logonalready":
+		key = "记录_开启_失败_未结束的记录"
+		defaultText = `当前已有记录中的日志{$t记录名称}，请先将其结束。`
+	case "logonfailunfinished":
+		key = "记录_开启_失败_未结束的记录"
+		defaultText = `当前已有记录中的日志{$t记录名称}，请先将其结束。`
+	case "logoff":
+		key = "记录_关闭_成功"
+		defaultText = `当前记录"{$t记录名称}"已经暂停，已记录文本{$t当前记录条数}条\n结束故事并传送日志请用.log end`
+	case "logoffsuccess":
+		key = "记录_关闭_成功"
+		defaultText = `当前记录"{$t记录名称}"已经暂停，已记录文本{$t当前记录条数}条\n结束故事并传送日志请用.log end`
+	case "logofffail":
+		key = "记录_关闭_失败"
+		defaultText = `没有找到正在进行的记录，已经是关闭状态。这可能表示您忘记了开启记录。`
+	case "logexportnotcertainlog":
+		key = "记录_取出_未指定记录"
+		defaultText = `命令格式错误：当前没有开启状态的记录，或没有通过参数指定要取出的日志。请参考帮助。`
+	case "loglistprefix":
+		key = "记录_列出_导入语"
+		defaultText = `正在列出存在于此群的记录:`
+	case "logend":
+		key = "记录_结束"
+		defaultText = `故事落下了帷幕。\n记录已经关闭。`
+	case "logendsuccess":
+		key = "记录_结束"
+		defaultText = `故事落下了帷幕。\n记录已经关闭。`
+	case "lognewbutunfinished":
+		key = "记录_新建_失败_未结束的记录"
+		defaultText = `上一段旅程{$t记录名称}还未结束，请先使用.log end结束故事。`
+	case "loglengthnotice":
+		key = "记录_条数提醒"
+		defaultText = `提示: 当前故事的文本已经记录了 {$t条数} 条`
+	case "logdelete":
+		key = "记录_删除_成功"
+		defaultText = "删除记录 {$t记录名称} 成功"
+	case "logdeletesuccess":
+		key = "记录_删除_成功"
+		defaultText = "删除记录 {$t记录名称} 成功"
+	case "logdeletefailnotfound":
+		key = "记录_删除_失败_找不到"
+		defaultText = "删除记录 {$t记录名称} 失败，可能是名字不对"
+	case "logdeletefailcontinuing":
+		key = "记录_删除_失败_正在进行"
+		defaultText = "记录 {$t记录名称} 正在进行，无法删除。请先用 log end 结束记录，如不希望上传请用 log halt。"
+	case "obenter":
+		key = "OB_开启"
+		defaultText = "你将成为观众（自动修改昵称和群名片[如有权限]，并不会给观众发送暗骰结果）。"
+	case "obexit":
+		key = "OB_关闭"
+		defaultText = "你不再是观众了（自动修改昵称和群名片[如有权限]）。"
+	case "logupload":
+		key = "记录_上传_成功"
+		defaultText = `跑团日志已上传服务器，链接如下：{$t日志链接}`
+	case "loguploadsuccess":
+		key = "记录_上传_成功"
+		defaultText = `跑团日志已上传服务器，链接如下：{$t日志链接}`
+	case "loguploadfail":
+		key = "记录_上传_失败"
+		defaultText = `跑团日志上传失败：{$t错误原因}\n若未出现线上日志地址，可换时间重试，或联系骰主在data/default/log-exports路径下取出日志\n文件名: 群号_日志名_随机数.zip\n注意此文件log end/get后才会生成`
+	case "logexport":
+		key = "记录_导出_成功"
+		defaultText = `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`
+	case "logexportsuccess":
+		key = "记录_导出_成功"
+		defaultText = `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`
+	case "syncname":
+		key = "名片_自动设置"
+		defaultText = `已自动设置名片格式为{$t名片格式}：{$t名片预览}\n如有权限会在属性更新时自动更新名片。使用.sn off可关闭。`
+	case "syncnamecancel":
+		key = "名片_取消设置"
+		defaultText = `已关闭对{$t玩家}的名片自动修改。`
+	default:
+		return
+	}
+
+	if cmdNum == 1 || subval == "help" || subval == "default" {
+		text := DiceFormatReplyshow(val, ctx, "其它:"+key, defaultText)
+		ReplyToSender(ctx, msg, text)
+		return
+	}
+
+	if subval == "clr" || subval == "del" || subval == "default" {
+		for index := range d.TextMapRaw["其它"][key] {
+			d.TextMapRaw["其它"][key][index][0] = defaultText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已重置词条: %s", val))
+	} else {
+		srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+		srcText = strings.TrimSpace(srcText)
+		for index := range d.TextMapRaw["其它"][key] {
+			d.TextMapRaw["其它"][key][index][0] = srcText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已将词条: %s 设为: %s", val, srcText))
+	}
+}
+
+func handleTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval string, cmdArgs *CmdArgs, d *Dice) {
+	switch val {
+	case "selfname", "unknownerror", "boton", "botoff", "replyon", "replyoff", "addgroup", "addfriend", "groupexitannounce", "groupexit", "savesetup", "additionalstatus", "reasonofrollprefix", "rolldiceeqvt", "rolldice", "rollmultidice":
+		handleCoreTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
+	case "setcocrule", "fumble", "failure", "success", "hardsuccess", "extremesuccess", "criticalsuccess", "musthardsuccess", "musthardfailure", "mustextremesuccess", "mustextremefailure", "mustcriticalsuccesssuccess", "mustcriticalsuccessfailure", "rollfumble", "rollfailure", "rollsuccess", "rollhardsuccess", "rollextremesuccess", "rollcriticalsuccess":
+		handleCOCTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
+	case "jrrp", "decklist", "drawkey", "nodeck", "deckcitenotfound", "deckcitenotfoundbuthavesimilar", "deckspliter", "deckresultprefix", "randomnamegenerate", "randomnamespliter", "poke", "ping", "lognew", "logon", "logonsuccess", "logonfailnolog", "logonfailnotnew", "logonalready", "logonfailunfinished", "logoff", "logoffsuccess", "logofffail", "logexportnotcertainlog", "loglistprefix", "logend", "logendsuccess", "lognewbutunfinished", "loglengthnotice", "logdelete", "logdeletesuccess", "logdeletefailnotfound", "logdeletefailcontinuing", "obenter", "obexit", "logupload", "loguploadsuccess", "loguploadfail", "logexport", "logexportsuccess", "syncname", "syncnamecancel":
+		handleOtherTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
+	default:
+		return
+	}
+}
 
 func Float64SliceToString(numbers []float64) string {
 	// 创建一个空字符串，用于存储结果
@@ -461,8 +806,11 @@ func (d *Dice) registerCoreCommands() {
 
 	//-----------------------------云黑对接-----------------------------------
 
-	helpForShikiCloudBlack := ".cloud sync //与溯洄云黑手动同步一次\n" +
-		".cloud autosync //与溯洄云黑每天自动同步一次(这是个饼)"
+	helpForShikiCloudBlack := ".cloud sync //与云黑服务器手动同步一次\n" +
+		".cloud autosync //与云黑服务器每天自动同步一次(这是个饼)\n" +
+		".cloud server list //查看云黑服务器列表\n" +
+		".cloud server +/- <名称> <链接> [<权重>] //添加/删除云黑服务器\n" +
+		".cloud server add/del <名称> <链接> [<权重>] //添加/删除云黑服务器"
 
 	cmdShikiCloudBlack := &CmdItemInfo{
 		Name:      "cloud",
@@ -483,6 +831,7 @@ func (d *Dice) registerCoreCommands() {
 				WarningID    string
 				BlackComment string
 				ErasedStatus bool
+				ServerWeight int
 			}
 
 			type jsonElement struct {
@@ -494,7 +843,7 @@ func (d *Dice) registerCoreCommands() {
 				IsErased  int    `json:"isErased"`
 			}
 
-			fetchAndParseJSON_shikiCloudBlack := func(url string) ([]blackunit, error) {
+			fetchAndParseJSON_shikiCloudBlack := func(url string, serverWeight int) ([]blackunit, error) {
 				// 发送 HTTP GET 请求
 				resp, err := http.Get(url)
 				if err != nil {
@@ -505,10 +854,7 @@ func (d *Dice) registerCoreCommands() {
 				// 读取响应体
 				body, _ := io.ReadAll(resp.Body)
 				var jsonData []jsonElement
-				err = json.Unmarshal(
-					body,
-					&jsonData,
-				)
+				err = json.Unmarshal(body, &jsonData)
 				if err != nil {
 					return nil, err
 				}
@@ -522,6 +868,7 @@ func (d *Dice) registerCoreCommands() {
 						WarningID:    strconv.Itoa(item.Wid),
 						BlackComment: item.Type + " " + item.Note,
 						ErasedStatus: item.IsErased != 0,
+						ServerWeight: serverWeight,
 					}
 					blackUnits = append(blackUnits, unit)
 				}
@@ -529,56 +876,148 @@ func (d *Dice) registerCoreCommands() {
 				return blackUnits, nil
 			}
 
-			blackGroupCnt := 0
-			blackGroupNewCnt := 0
-			blackQQCnt := 0
-			blackQQNewCnt := 0
-			erasedCnt := 0
-			erasedNewCnt := 0
-
 			val := strings.ToLower(cmdArgs.GetArgN(1))
 			subval := strings.ToLower(cmdArgs.GetArgN(2))
 			switch val {
 			case "sync":
 				ReplyToSender(ctx, msg, "正在同步云黑...")
 				time.Sleep(1000 * time.Millisecond)
-				url := "https://shiki.stringempty.xyz/blacklist/checked.json?"
-				blackUnits, _ := fetchAndParseJSON_shikiCloudBlack(url)
-				for _, blackitem := range blackUnits {
+
+				type BlacklistData struct {
+					BlackUnits   []blackunit
+					ServerWeight int
+				}
+
+				var allBlackUnits []BlacklistData
+				ServerListLen := len(d.BlackServerList)
+				AliveListLen := 0
+				if ServerListLen == 0 {
+					ReplyToSender(ctx, msg, "云黑服务器列表为空")
+					return CmdExecuteResult{Matched: true, Solved: true}
+				}
+
+				// 获取所有服务器的黑名单和擦除名单
+				for _, server := range d.BlackServerList {
+					url := server.ServerUrl
+					weight := server.ServerWeight
+					blackUnits, err := fetchAndParseJSON_shikiCloudBlack(url, weight)
+					if err != nil {
+						ReplyToSender(ctx, msg, fmt.Sprintf("从服务器 %s 获取数据失败: %v", server.ServerName, err))
+						continue
+					}
+
+					blackUnitsData := BlacklistData{
+						BlackUnits:   blackUnits,
+						ServerWeight: server.ServerWeight,
+					}
+					allBlackUnits = append(allBlackUnits, blackUnitsData)
+					AliveListLen++
+				}
+				time.Sleep(1000 * time.Millisecond)
+				ReplyToSender(ctx, msg, fmt.Sprintf("%s%d%s%d%s", "列表中共有: ", ServerListLen, "组服务器，本次同步其中: ", AliveListLen, "组，接下来开始同步，请耐心等待。"))
+				// 合并黑名单和擦除名单
+				mergedBlackUnits := make(map[string]blackunit)
+				mergedErasedUnits := make(map[string]blackunit)
+
+				// 遍历所有服务器返回的黑名单数据
+				for _, data := range allBlackUnits {
+					// 遍历每个服务器返回的黑名单条目
+					for _, blackitem := range data.BlackUnits {
+						if blackitem.ErasedStatus {
+							// 如果条目是擦除状态
+							if existingBlackItem, exists := mergedBlackUnits[blackitem.BlackQQ]; exists {
+								// 如果已经存在相同的黑名单条目，比较权重
+								if existingBlackItem.ServerWeight < blackitem.ServerWeight {
+									// 如果擦除条目的权重大于黑名单条目，更新为擦除条目
+									delete(mergedBlackUnits, blackitem.BlackQQ)
+									mergedErasedUnits[blackitem.BlackQQ] = blackitem
+								}
+							} else {
+								// 如果不存在相同的黑名单条目，直接添加擦除条目
+								if existingErasedItem, exists := mergedErasedUnits[blackitem.BlackQQ]; exists {
+									// 如果已经存在相同的擦除条目，比较权重
+									if existingErasedItem.ServerWeight < blackitem.ServerWeight {
+										mergedErasedUnits[blackitem.BlackQQ] = blackitem
+									}
+								} else {
+									mergedErasedUnits[blackitem.BlackQQ] = blackitem
+								}
+							}
+						} else {
+							// 如果条目是黑名单状态
+							if existingErasedItem, exists := mergedErasedUnits[blackitem.BlackQQ]; exists {
+								// 如果已经存在相同的擦除条目，比较权重
+								if existingErasedItem.ServerWeight <= blackitem.ServerWeight {
+									// 如果黑名单条目的权重大于或等于擦除条目，更新为黑名单条目
+									delete(mergedErasedUnits, blackitem.BlackQQ)
+									mergedBlackUnits[blackitem.BlackQQ] = blackitem
+								}
+							} else {
+								// 如果不存在相同的擦除条目，直接添加黑名单条目
+								if existingBlackItem, exists := mergedBlackUnits[blackitem.BlackQQ]; exists {
+									// 如果已经存在相同的黑名单条目，比较权重
+									if existingBlackItem.ServerWeight < blackitem.ServerWeight {
+										mergedBlackUnits[blackitem.BlackQQ] = blackitem
+									}
+								} else {
+									mergedBlackUnits[blackitem.BlackQQ] = blackitem
+								}
+							}
+						}
+					}
+				}
+
+				blackGroupCnt := 0
+				blackGroupNewCnt := 0
+				blackQQCnt := 0
+				blackQQNewCnt := 0
+				erasedCnt := 0
+				erasedNewCnt := 0
+
+				// 根据合并后的名单进行同步操作
+				for _, blackitem := range mergedBlackUnits {
 					qqTobeBlack := FormatDiceID(ctx, blackitem.BlackQQ, false)
 					groupTobeBlack := FormatDiceID(ctx, blackitem.BlackGroup, true)
 					if !blackitem.ErasedStatus {
 						item, ok := d.BanList.GetByID(qqTobeBlack)
 						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-							d.BanList.AddScoreBase(qqTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+							d.BanList.AddScoreBase(qqTobeBlack, d.BanList.ThresholdBan, "云黑api", blackitem.BlackComment, ctx)
 							blackQQNewCnt++
 						}
 						blackQQCnt++
 						item, ok = d.BanList.GetByID(groupTobeBlack)
 						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-							d.BanList.AddScoreBase(groupTobeBlack, d.BanList.ThresholdBan, "溯洄云黑", blackitem.BlackComment, ctx)
+							d.BanList.AddScoreBase(groupTobeBlack, d.BanList.ThresholdBan, "云黑api", blackitem.BlackComment, ctx)
 							blackGroupNewCnt++
 						}
 						blackGroupCnt++
-
-					} else {
-						erasedCnt++
-						item, ok := d.BanList.GetByID(qqTobeBlack)
-						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
-							item.Score = 0
-							item.Rank = BanRankNormal
-							erasedNewCnt++
-						}
-						item, ok = d.BanList.GetByID(groupTobeBlack)
-						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
-							item.Score = 0
-							item.Rank = BanRankNormal
-						}
-
 					}
 				}
-				ReplyToSender(ctx, msg, fmt.Sprintf("共计从溯洄云黑api获取黑名单群组:%d个，新增:%d个；黑名单用户:%d名，新增:%d名。并有%d组已在云端消除黑名单记录，新增%d组。", blackGroupCnt, blackGroupNewCnt, blackQQCnt, blackQQNewCnt, erasedCnt, erasedNewCnt))
+
+				for _, erasedItem := range mergedErasedUnits {
+					qqTobeBlack := FormatDiceID(ctx, erasedItem.BlackQQ, false)
+					groupTobeBlack := FormatDiceID(ctx, erasedItem.BlackGroup, true)
+					erasedCnt++
+					item, ok := d.BanList.GetByID(qqTobeBlack)
+					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+						item.Score = 0
+						item.Rank = BanRankNormal
+						erasedNewCnt++
+					}
+					item, ok = d.BanList.GetByID(groupTobeBlack)
+					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+						item.Score = 0
+						item.Rank = BanRankNormal
+					}
+				}
+				time.Sleep(1000 * time.Millisecond)
+				ReplyToSender(ctx, msg, fmt.Sprintf(
+					"共计从云黑api获取黑名单群组:%d个，新增:%d个；黑名单用户:%d名，新增:%d名。并有%d组已在云端消除黑名单记录，新增%d组✓",
+					blackGroupCnt, blackGroupNewCnt, blackQQCnt, blackQQNewCnt, erasedCnt, erasedNewCnt,
+				))
+
 				return CmdExecuteResult{Matched: true, Solved: true}
+
 			case "server":
 				switch subval {
 				case "list":
@@ -605,6 +1044,18 @@ func (d *Dice) registerCoreCommands() {
 						ReplyToSender(ctx, msg, "请写出云黑服务器地址")
 						return CmdExecuteResult{Matched: true, Solved: true}
 					}
+					if strings.ToLower(newServerName) == "default" {
+						newDefaultServerItem := BlackServerListWithWeight{
+							ServerName:   "溯洄云黑",
+							ServerUrl:    "https://shiki.stringempty.xyz/blacklist/checked.json?",
+							ServerWeight: 1,
+						}
+						d.BlackServerList = append(d.BlackServerList, newDefaultServerItem)
+						reply := fmt.Sprintf("%s%s%s%s%s%d%s", "成功添加默认云黑服务器: ", newDefaultServerItem.ServerName, "\n服务器地址: ", newDefaultServerItem.ServerUrl, "\n服务器权重: ", newDefaultServerItem.ServerWeight, "✓")
+						d.Save(false)
+						ReplyToSender(ctx, msg, reply)
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
 					newServerWeight := 1
 					if newsw == "" {
 						newServerWeight = 1
@@ -615,7 +1066,7 @@ func (d *Dice) registerCoreCommands() {
 						if item.ServerName == newServerName {
 							d.BlackServerList[index].ServerUrl = newServerUrl
 							d.BlackServerList[index].ServerWeight = newServerWeight
-							reply := fmt.Sprintf("%s%s%s%s%s%d", "成功编辑云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+							reply := fmt.Sprintf("%s%s%s%s%s%d%s", "成功编辑云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight, "✓")
 							ReplyToSender(ctx, msg, reply)
 							return CmdExecuteResult{Matched: true, Solved: true}
 						}
@@ -626,7 +1077,7 @@ func (d *Dice) registerCoreCommands() {
 						ServerWeight: newServerWeight,
 					}
 					d.BlackServerList = append(d.BlackServerList, newServerItem)
-					reply := fmt.Sprintf("%s%s%s%s%s%d", "成功添加云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+					reply := fmt.Sprintf("%s%s%s%s%s%d%s", "成功添加云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight, "✓")
 					d.Save(false)
 					ReplyToSender(ctx, msg, reply)
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -653,7 +1104,7 @@ func (d *Dice) registerCoreCommands() {
 						if item.ServerName == newServerName {
 							d.BlackServerList[index].ServerUrl = newServerUrl
 							d.BlackServerList[index].ServerWeight = newServerWeight
-							reply := fmt.Sprintf("%s%s%s%s%s%d", "成功编辑云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+							reply := fmt.Sprintf("%s%s%s%s%s%d%s", "成功编辑云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight, "✓")
 							ReplyToSender(ctx, msg, reply)
 							return CmdExecuteResult{Matched: true, Solved: true}
 						}
@@ -664,7 +1115,7 @@ func (d *Dice) registerCoreCommands() {
 						ServerWeight: newServerWeight,
 					}
 					d.BlackServerList = append(d.BlackServerList, newServerItem)
-					reply := fmt.Sprintf("%s%s%s%s%s%d", "成功添加云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight)
+					reply := fmt.Sprintf("%s%s%s%s%s%d%s", "成功添加云黑服务器: ", newServerName, "\n服务器地址: ", newServerUrl, "\n服务器权重: ", newServerWeight, "✓")
 					d.Save(false)
 					ReplyToSender(ctx, msg, reply)
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -678,7 +1129,7 @@ func (d *Dice) registerCoreCommands() {
 							delServerUrl := item.ServerUrl
 							delServerWeight := item.ServerWeight
 							d.BlackServerList = append(d.BlackServerList[:index], d.BlackServerList[index+1:]...)
-							reply = fmt.Sprintf("%s%s%s%s%s%d", "成功删除云黑服务器: ", delServerName, "\n服务器地址: ", delServerUrl, "\n服务器权重: ", delServerWeight)
+							reply = fmt.Sprintf("%s%s%s%s%s%d%s", "成功删除云黑服务器: ", delServerName, "\n服务器地址: ", delServerUrl, "\n服务器权重: ", delServerWeight, "✓")
 						}
 					}
 					if reply == "" {
@@ -697,7 +1148,7 @@ func (d *Dice) registerCoreCommands() {
 							delServerUrl := item.ServerUrl
 							delServerWeight := item.ServerWeight
 							d.BlackServerList = append(d.BlackServerList[:index], d.BlackServerList[index+1:]...)
-							reply = fmt.Sprintf("%s%s%s%s%s%d", "成功删除云黑服务器: ", delServerName, "\n服务器地址: ", delServerUrl, "\n服务器权重: ", delServerWeight)
+							reply = fmt.Sprintf("%s%s%s%s%s%d%s", "成功删除云黑服务器: ", delServerName, "\n服务器地址: ", delServerUrl, "\n服务器权重: ", delServerWeight, "✓")
 						}
 					}
 					if reply == "" {
@@ -730,97 +1181,269 @@ func (d *Dice) registerCoreCommands() {
 				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:提示_无权限_非master"))
 				return CmdExecuteResult{Matched: true, Solved: true}
 			}
+			if strings.ToLower(cmdArgs.GetArgN(1)) == "broadcast" {
+				subval := strings.ToLower(cmdArgs.GetArgN(2))
+				WindowUID := cmdArgs.GetArgN(3)
+				switch subval {
+				case "add":
+					if strings.HasPrefix(WindowUID, "g") {
+						WindowUID = strings.ReplaceAll(WindowUID, "g", "QQ-Group:")
+					} else if !strings.HasPrefix(WindowUID, "QQ-Group:") {
+						if !strings.HasPrefix(WindowUID, "QQ:") {
+							ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "未定义的窗口: ", WindowUID))
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
+					}
+					for _, WarningNoticeWindow := range d.WarningNoticeList {
+						if WindowUID == WarningNoticeWindow {
+							ReplyToSender(ctx, msg, "窗口 "+WindowUID+"已在列表中")
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
+					}
+					d.WarningNoticeList = append(d.WarningNoticeList, WindowUID)
+					d.Save(false)
+					ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s", "窗口: ", WindowUID, "已添加到列表✓"))
+					return CmdExecuteResult{Matched: true, Solved: true}
+				case "del":
+					if strings.HasPrefix(WindowUID, "g") {
+						WindowUID = strings.ReplaceAll(WindowUID, "g", "QQ-Group:")
+					} else if !strings.HasPrefix(WindowUID, "QQ-Group:") {
+						if !strings.HasPrefix(WindowUID, "QQ:") {
+							ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "未定义的窗口: ", WindowUID))
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
+					}
+					for index, WarningNoticeWindow := range d.WarningNoticeList {
+						if WindowUID == WarningNoticeWindow {
+							d.WarningNoticeList = append(d.WarningNoticeList[:index], d.WarningNoticeList[index+1:]...)
+							d.Save(false)
+							ReplyToSender(ctx, msg, "窗口 "+WindowUID+"已从列表中删除✓")
+							return CmdExecuteResult{Matched: true, Solved: true}
+						}
+					}
+					ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s", "窗口 ", WindowUID, "未在列表中"))
+					return CmdExecuteResult{Matched: true, Solved: true}
+				case "list":
+					reply := "黑名单事件播报列表: "
+					for _, WarningNoticeWindow := range d.WarningNoticeList {
+						reply += WarningNoticeWindow + "\n"
+					}
+					if len(d.WarningNoticeList) == 0 {
+						reply = "黑名单事件播报列表: \n无"
+						return CmdExecuteResult{Matched: true, Solved: true}
+					}
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+				default:
+					return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
+				}
+			} else if strings.ToLower(cmdArgs.GetArgN(1)) == "generate" || strings.ToLower(cmdArgs.GetArgN(1)) == "gene" {
+				subval := strings.ToLower(cmdArgs.GetArgN(2))
+				switch subval {
+				case "qq":
+					BlackType := strings.ToLower(cmdArgs.GetArgN(3))
+					BlackQQ := cmdArgs.GetArgN(4)
+					var warningStruct warningMessage
+					var warningNote string
+					var warningDanger int
+					if BlackType == "ban" {
+						warningStruct.Type = "ban"
+						warningNote = "被禁言"
+						warningDanger = 2
+					} else if BlackType == "mute" {
+						warningStruct.Type = "mute"
+						warningNote = "被禁言"
+						warningDanger = 2
+					} else if BlackType == "kick" {
+						warningStruct.Type = "kick"
+						warningNote = "被踢出"
+						warningDanger = 2
+					} else if BlackType == "spam" {
+						warningStruct.Type = "spam"
+						warningNote = "被标记为刷屏"
+						warningDanger = 1
+					} else {
+						warningStruct.Type = "other"
+						warningNote = "其他原因"
+						warningDanger = 1
+					}
+					warningStruct.Time = time.Now().Format("2006-01-02 15:04:05")
+					tmpvar, _ := strconv.Atoi(ctx.EndPoint.UserID)
+					warningStruct.DiceMaid = int64(tmpvar)
+					warningStruct.Comment = fmt.Sprintf("%s%s%s%s%s%s", warningStruct.Time, "由骰主: ", ctx.Player.Name, "于群: ", ctx.Group.GroupName, "中生成")
+					tmpvar, _ = strconv.Atoi(ctx.Player.UserID)
+					warningStruct.MasterQQ = int64(tmpvar)
+					warningStruct.Danger = warningDanger
+					warningStruct.Note = warningNote
 
-			// 解析警告信息
-			warningInformation := cmdArgs.RawArgs
-			var warningStruct warningMessage
-			err := json.Unmarshal([]byte(warningInformation), &warningStruct)
-			if err != nil {
-				ReplyToSender(ctx, msg, "警告信息解析失败"+cmdArgs.Args[0])
-				return CmdExecuteResult{Matched: true, Solved: true}
-			}
+					tmpvar, _ = strconv.Atoi(BlackQQ)
+					warningStruct.FromQQ = int64(tmpvar)
+					warningStruct.FromUID = int64(tmpvar)
 
-			retMes := ""
-			if warningStruct.Type != "erase" {
-				// 处理fromGroup和fromQQ
-				if warningStruct.FromGroup != 0 {
-					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGroup)
-					item, ok := d.BanList.GetByID(warningEventGroup)
-					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-						d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+					warningJson, _ := json.Marshal(warningStruct)
+					reply := fmt.Sprintf("%s%s", "!warning", string(warningJson))
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+
+				case "group":
+					BlackType := strings.ToLower(cmdArgs.GetArgN(3))
+					BlackGroup := cmdArgs.GetArgN(4)
+					var warningStruct warningMessage
+					var warningNote string
+					var warningDanger int
+					if BlackType == "ban" {
+						warningStruct.Type = "ban"
+						warningNote = "被禁言"
+						warningDanger = 2
+					} else if BlackType == "mute" {
+						warningStruct.Type = "mute"
+						warningNote = "被禁言"
+						warningDanger = 2
+					} else if BlackType == "kick" {
+						warningStruct.Type = "kick"
+						warningNote = "被踢出"
+						warningDanger = 2
+					} else if BlackType == "spam" {
+						warningStruct.Type = "spam"
+						warningNote = "被标记为刷屏"
+						warningDanger = 1
+					} else {
+						warningStruct.Type = "other"
+						warningNote = "其他原因"
+						warningDanger = 1
 					}
-					retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
-				}
-				if warningStruct.FromGID != 0 {
-					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGID)
-					item, ok := d.BanList.GetByID(warningEventGroup)
-					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-						d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
-					}
-					retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
-				}
-				if warningStruct.FromQQ != 0 {
-					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
-					item, ok := d.BanList.GetByID(warningEventQQ)
-					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-						d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
-					}
-					retMes += fmt.Sprintf("已将%s加入黑名单✓", warningEventQQ)
+					warningStruct.Time = time.Now().Format("2006-01-02 15:04:05")
+					tmpvar, _ := strconv.Atoi(ctx.EndPoint.UserID)
+					warningStruct.DiceMaid = int64(tmpvar)
+					warningStruct.Comment = fmt.Sprintf("%s%s%s%s%s%s", warningStruct.Time, "由骰主: ", ctx.Player.Name, "于群: ", ctx.Group.GroupName, "中生成")
+					tmpvar, _ = strconv.Atoi(ctx.Player.UserID)
+					warningStruct.MasterQQ = int64(tmpvar)
+					warningStruct.Danger = warningDanger
+					warningStruct.Note = warningNote
+
+					tmpvar, _ = strconv.Atoi(BlackGroup)
+					warningStruct.FromGroup = int64(tmpvar)
+					warningStruct.FromGID = int64(tmpvar)
+
+					warningJson, _ := json.Marshal(warningStruct)
+					reply := fmt.Sprintf("%s%s", "!warning", string(warningJson))
+					ReplyToSender(ctx, msg, reply)
+					return CmdExecuteResult{Matched: true, Solved: true}
+
+				default:
+					return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 				}
 
-				if warningStruct.FromUID != 0 {
-					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromUID)
-					item, ok := d.BanList.GetByID(warningEventQQ)
-					if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
-						d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
-					}
-					retMes += fmt.Sprintf("已将%s加入黑名单✓", warningEventQQ)
-				}
 			} else {
-				// 处理fromGroup和fromQQ
-				if warningStruct.FromGroup != 0 {
-					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGroup)
-					item, ok := d.BanList.GetByID(warningEventGroup)
-					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
-						item.Score = 0
-						item.Rank = BanRankNormal
-					}
-					retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventGroup)
-				}
-				if warningStruct.FromGID != 0 {
-					warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGID)
-					item, ok := d.BanList.GetByID(warningEventGroup)
-					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
-						item.Score = 0
-						item.Rank = BanRankNormal
-					}
-					retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventGroup)
-				}
-				if warningStruct.FromQQ != 0 {
-					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
-					item, ok := d.BanList.GetByID(warningEventQQ)
-					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
-						item.Score = 0
-						item.Rank = BanRankNormal
-					}
-					retMes += fmt.Sprintf("已将%s移除黑名单✓", warningEventQQ)
-				}
-				if warningStruct.FromUID != 0 {
-					warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromUID)
-					item, ok := d.BanList.GetByID(warningEventQQ)
-					if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
-						item.Score = 0
-						item.Rank = BanRankNormal
-					}
-					retMes += fmt.Sprintf("已将%s移除黑名单✓", warningEventQQ)
+				// 解析警告信息
+				re := regexp.MustCompile(`\s`)
+				warningInformation := re.ReplaceAllString(cmdArgs.RawArgs, "")
+				var warningStruct warningMessage
+				err := json.Unmarshal([]byte(warningInformation), &warningStruct)
+				if err != nil {
+					ReplyToSender(ctx, msg, "警告信息解析失败"+cmdArgs.RawArgs)
+					return CmdExecuteResult{Matched: true, Solved: true}
 				}
 
+				retMes := ""
+				if warningStruct.Type != "erase" {
+					// 处理fromGroup和fromQQ
+					if warningStruct.FromGroup != 0 {
+						warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGroup)
+						item, ok := d.BanList.GetByID(warningEventGroup)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+							retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
+						} else {
+							retMes += fmt.Sprintf("%s已在黑名单中✓\n", warningEventGroup)
+						}
+					}
+					if warningStruct.FromGID != 0 {
+						warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGID)
+						item, ok := d.BanList.GetByID(warningEventGroup)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(warningEventGroup, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+							retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventGroup)
+						} else {
+							retMes += fmt.Sprintf("%s已在黑名单中✓\n", warningEventGroup)
+						}
+
+					}
+					if warningStruct.FromQQ != 0 {
+						warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
+						item, ok := d.BanList.GetByID(warningEventQQ)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+							retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventQQ)
+						} else {
+							retMes += fmt.Sprintf("%s已在黑名单中✓\n", warningEventQQ)
+						}
+					}
+
+					if warningStruct.FromUID != 0 {
+						warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromUID)
+						item, ok := d.BanList.GetByID(warningEventQQ)
+						if !ok || (item.Rank != BanRankBanned && item.Rank != BanRankTrusted && item.Rank != BanRankWarn) {
+							d.BanList.AddScoreBase(warningEventQQ, d.BanList.ThresholdBan, warningStruct.Comment, "溯洄广播黑名单同步", ctx)
+							retMes += fmt.Sprintf("已将%s加入黑名单✓\n", warningEventQQ)
+						} else {
+							retMes += fmt.Sprintf("%s已在黑名单中✓\n", warningEventQQ)
+						}
+					}
+				} else {
+					// 处理fromGroup和fromQQ
+					if warningStruct.FromGroup != 0 {
+						warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGroup)
+						item, ok := d.BanList.GetByID(warningEventGroup)
+						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+							item.Score = 0
+							item.Rank = BanRankNormal
+							retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventGroup)
+						} else {
+							retMes += fmt.Sprintf("%s并未在黑名单中✓\n", warningEventGroup)
+						}
+					}
+					if warningStruct.FromGID != 0 {
+						warningEventGroup := fmt.Sprintf("QQ-Group:%d", warningStruct.FromGID)
+						item, ok := d.BanList.GetByID(warningEventGroup)
+						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+							item.Score = 0
+							item.Rank = BanRankNormal
+							retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventGroup)
+						} else {
+							retMes += fmt.Sprintf("%s并未在黑名单中✓\n", warningEventGroup)
+						}
+					}
+					if warningStruct.FromQQ != 0 {
+						warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromQQ)
+						item, ok := d.BanList.GetByID(warningEventQQ)
+						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+							item.Score = 0
+							item.Rank = BanRankNormal
+							retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventQQ)
+						} else {
+							retMes += fmt.Sprintf("%s并未在黑名单中✓\n", warningEventQQ)
+						}
+					}
+					if warningStruct.FromUID != 0 {
+						warningEventQQ := fmt.Sprintf("QQ:%d", warningStruct.FromUID)
+						item, ok := d.BanList.GetByID(warningEventQQ)
+						if ok && (item.Rank == BanRankBanned || item.Rank == BanRankTrusted || item.Rank == BanRankWarn) {
+							item.Score = 0
+							item.Rank = BanRankNormal
+							retMes += fmt.Sprintf("已将%s移除黑名单✓\n", warningEventQQ)
+						} else {
+							retMes += fmt.Sprintf("%s并未在黑名单中✓\n", warningEventQQ)
+						}
+					}
+
+				}
+				var warningInformationJson bytes.Buffer
+				_ = json.Indent(&warningInformationJson, []byte(warningInformation), "", "    ")
+
+				ReplyToSender(ctx, msg, retMes)
+				ReplyToSender(ctx, msg, fmt.Sprintf("%s %s已通知%s不良记录%d:\n!warning%s", time.Now().Format("2006-01-02 15:04:05"), ctx.Player.Name, "骰娘", warningStruct.Wid, warningInformationJson.String()))
 			}
-			var warningInformationJson bytes.Buffer
-			_ = json.Indent(&warningInformationJson, []byte(warningInformation), "", "    ")
-
-			ReplyToSender(ctx, msg, retMes)
-			ReplyToSender(ctx, msg, fmt.Sprintf("%s %s已通知%s不良记录%d:\n!warning%s", time.Now().Format("2006-01-02 15:04:05"), ctx.Player.Name, "骰娘", warningStruct.Wid, warningInformationJson.String()))
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},
 	}
@@ -1056,9 +1679,9 @@ func (d *Dice) registerCoreCommands() {
 		Solve: func(ctx *MsgContext, msg *Message, cmdArgs *CmdArgs) CmdExecuteResult {
 			arg := cmdArgs.GetArgN(1)
 			if arg == "" {
-				text := "海豹核心 " + VERSION.String() + "\n"
-				text += "官网: sealdice.com" + "\n"
-				text += "海豹群: 524364253" + "\n"
+				text := "风暴核心 " + VERSION.String() + "\n"
+				text += "官网: 没有官网" + "\n"
+				text += "风暴群: 484850959" + "\n"
 				text += DiceFormatTmpl(ctx, "核心:骰子帮助文本_附加说明")
 				ReplyToSender(ctx, msg, text)
 				return CmdExecuteResult{Matched: true, Solved: true}
@@ -1311,10 +1934,6 @@ func (d *Dice) registerCoreCommands() {
 				VarSetValueStr(ctx, "$t群内工作状态", groupWorkInfo)
 				VarSetValueStr(ctx, "$t群内工作状态_仅状态", activeText)
 				ver := VERSION.String()
-				arch := runtime.GOARCH
-				if arch != "386" && arch != "amd64" {
-					ver = fmt.Sprintf("%s %s", ver, arch)
-				}
 				baseText := fmt.Sprintf("SealDice %s%s\n%s", ver, onlineVer, addonText)
 				extText := DiceFormatTmpl(ctx, "核心:骰子状态附加文本")
 				if extText != "" {
@@ -1392,10 +2011,6 @@ func (d *Dice) registerCoreCommands() {
 			VarSetValueStr(ctx, "$t群内工作状态", groupWorkInfo)
 			VarSetValueStr(ctx, "$t群内工作状态_仅状态", activeText)
 			ver := VERSION.String()
-			arch := runtime.GOARCH
-			if arch != "386" && arch != "amd64" {
-				ver = fmt.Sprintf("%s %s", ver, arch)
-			}
 			baseText := fmt.Sprintf("SealDice %s%s", ver, onlineVer)
 			extText := DiceFormatTmpl(ctx, "核心:骰子状态附加文本")
 			if extText != "" {
@@ -1566,7 +2181,7 @@ func (d *Dice) registerCoreCommands() {
 				}
 
 				reply = fmt.Sprintf(
-					"新增标记了%d/%d个帐号，这些账号将被视为机器人。\n因此他们被人@，或主动发出指令时，海豹将不会回复。\n另外对于botlist add/rm，如果群里有多个海豹，只有第一个被@的会回复，其余的执行指令但不回应",
+					"新增标记了%d/%d个帐号，这些账号将被视为机器人。\n因此他们被人@，或主动发出指令时，风暴将不会回复。\n另外对于botlist add/rm，如果群里有多个风暴，只有第一个被@的会回复，其余的执行指令但不回应",
 					newCount, allCount,
 				)
 			case "del", "rm":
@@ -1581,7 +2196,7 @@ func (d *Dice) registerCoreCommands() {
 				}
 
 				reply = fmt.Sprintf(
-					"删除标记了%d/%d个帐号，这些账号将不再被视为机器人。\n海豹将继续回应他们的命令",
+					"删除标记了%d/%d个帐号，这些账号将不再被视为机器人。\n风暴将继续回应他们的命令",
 					existsCount, allCount,
 				)
 			case "list", "show":
@@ -1707,7 +2322,7 @@ func (d *Dice) registerCoreCommands() {
 					}
 				}
 				ctx.Dice.Save(false)
-				ReplyToSender(ctx, msg, fmt.Sprintf("海豹将新增%d位master", count))
+				ReplyToSender(ctx, msg, fmt.Sprintf("风暴将新增%d位master", count))
 			case "del", "rm":
 				var count int
 				for _, uid := range readIDList(ctx, msg, cmdArgs) {
@@ -1716,7 +2331,7 @@ func (d *Dice) registerCoreCommands() {
 					}
 				}
 				ctx.Dice.Save(false)
-				ReplyToSender(ctx, msg, fmt.Sprintf("海豹移除了%d名master", count))
+				ReplyToSender(ctx, msg, fmt.Sprintf("风暴移除了%d名master", count))
 			case "relogin":
 				var kw *Kwarg
 
@@ -1774,80 +2389,6 @@ func (d *Dice) registerCoreCommands() {
 					d.Logger.Error("骰子备份:", err)
 					ReplyToSender(ctx, msg, "备份失败！错误已写入日志。可能是磁盘已满所致，建议立即进行处理！")
 				}
-			/*case "checkupdate":
-			var dm = ctx.Dice.Parent
-			if dm.JustForTest {
-				ReplyToSender(ctx, msg, "此指令在展示模式下不可用")
-				return CmdExecuteResult{Matched: true, Solved: true}
-			}
-
-			if runtime.GOOS == "android" {
-				ReplyToSender(ctx, msg, "检测到手机版，手机版海豹不支持指令更新，请手动下载新版本安装包")
-				return CmdExecuteResult{Matched: true, Solved: true}
-			}
-
-			if dm.ContainerMode {
-				ReplyToSender(ctx, msg, "容器模式下禁止指令更新，请手动拉取最新镜像")
-				return CmdExecuteResult{Matched: true, Solved: true}
-			}
-
-			code := cmdArgs.GetArgN(2)
-			if code == "" {
-				var text string
-				dm.AppVersionOnline = nil
-				dm.UpdateCheckRequestChan <- 1
-
-				// 等待获取新版本，最多10s
-				for i := 0; i < 5; i++ {
-					time.Sleep(2 * time.Second)
-					if dm.AppVersionOnline != nil {
-						break
-					}
-				}
-
-				if dm.AppVersionOnline != nil {
-					text = fmt.Sprintf("当前本地版本为: %s\n当前线上版本为: %s", VERSION.String(), dm.AppVersionOnline.VersionLatestDetail)
-					if dm.AppVersionCode != dm.AppVersionOnline.VersionLatestCode {
-						updateCode = strconv.FormatInt(rand.Int63()%8999+1000, 10)
-						text += fmt.Sprintf("\n如需升级，请输入.master checkupdate %s 确认进行升级\n升级将花费约2分钟，升级失败可能导致进程关闭，建议在接触服务器情况下操作。\n当前进程启动时间: %s", updateCode, time.Unix(dm.AppBootTime, 0).Format("2006-01-02 15:04:05"))
-					}
-				} else {
-					text = fmt.Sprintf("当前本地版本为: %s\n当前线上版本为: %s", VERSION.String(), "未知")
-				}
-				ReplyToSender(ctx, msg, text)
-				break
-			}
-
-			if code != updateCode || updateCode == "0000" {
-				ReplyToSender(ctx, msg, "无效的升级指令码")
-				break
-			}
-
-			ReplyToSender(ctx, msg, "开始下载新版本，完成后将自动进行一次备份")
-			go func() {
-				ret := <-dm.UpdateDownloadedChan
-
-				if ctx.IsPrivate {
-					ctx.Dice.UpgradeWindowID = msg.Sender.UserID
-				} else {
-					ctx.Dice.UpgradeWindowID = ctx.Group.GroupID
-				}
-				ctx.Dice.UpgradeEndpointID = ctx.EndPoint.ID
-				ctx.Dice.Save(true)
-
-				bakFn, _ := ctx.Dice.Parent.Backup(BackupSelectionAll, false)
-				tmpPath := path.Join(os.TempDir(), bakFn)
-				_ = os.MkdirAll(tmpPath, 0755)
-				ctx.Dice.Logger.Infof("将备份文件复制到此路径: %s", tmpPath)
-				_ = cp.Copy(path.Join(BackupDir, bakFn), tmpPath)
-
-				if ret == "" {
-					ReplyToSender(ctx, msg, "准备开始升级，服务即将离线")
-				} else {
-					ReplyToSender(ctx, msg, "升级失败，原因: "+ret)
-				}
-			}()
-			dm.UpdateRequestChan <- d*/
 			case "reboot":
 				var dm = ctx.Dice.Parent
 				if dm.JustForTest {
@@ -2576,7 +3117,7 @@ func (d *Dice) registerCoreCommands() {
 		".pc save [<角色名>] // [不绑卡]保存角色，角色名可省略\n" +
 		".pc load (<角色名> | <角色序号>) // [不绑卡]加载角色\n" +
 		".pc del/rm (<角色名> | <角色序号>) // 删除角色 角色序号可用pc list查询\n" +
-		"> 注: 海豹各群数据独立(多张空白卡)，单群游戏不需要存角色。"
+		"> 注: 风暴各群数据独立(多张空白卡)，单群游戏不需要存角色。"
 
 	cmdChar := &CmdItemInfo{
 		Name:      "pc",
@@ -2963,2837 +3504,7 @@ func (d *Dice) registerCoreCommands() {
 			val = strings.ToLower(val)
 			subval := cmdArgs.GetArgN(2)
 			subval = strings.ToLower(subval)
-			cmdNum := len(cmdArgs.Args)
-			switch val {
-			case "selfname":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子名字", "风暴核心")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子名字"] {
-							srcText := "风暴核心"
-							d.TextMapRaw["核心"]["骰子名字"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子名字"] {
-							d.TextMapRaw["核心"]["骰子名字"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "unknownerror":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子执行异常", "指令执行异常，请联系开发者，非常感谢。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子执行异常"] {
-							srcText := "指令执行异常，请联系开发者，非常感谢。"
-							d.TextMapRaw["核心"]["骰子执行异常"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子执行异常"] {
-							d.TextMapRaw["核心"]["骰子执行异常"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "boton":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子开启", "{常量:APPNAME} 已启用 {常量:VERSION}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子开启"] {
-							srcText := "{常量:APPNAME} 已启用 {常量:VERSION}"
-							d.TextMapRaw["核心"]["骰子开启"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子开启"] {
-							d.TextMapRaw["核心"]["骰子开启"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "botoff":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子关闭", "<{核心:骰子名字}> 停止服务")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子关闭"] {
-							srcText := "<{核心:骰子名字}> 停止服务"
-							d.TextMapRaw["核心"]["骰子关闭"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子关闭"] {
-							d.TextMapRaw["核心"]["骰子关闭"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "replyon":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:开启自定义回复", "<{核心:骰子名字}>已在此群内开启自定义回复！\n群内工作状态:{$t旧群内状态}-->开")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["开启自定义回复"] {
-							srcText := "<{核心:骰子名字}>已在此群内开启自定义回复！\n群内工作状态:{$t旧群内状态}-->开"
-							d.TextMapRaw["核心"]["开启自定义回复"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["开启自定义回复"] {
-							d.TextMapRaw["核心"]["开启自定义回复"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "replyoff":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:关闭自定义回复", "<{核心:骰子名字}>已在此群内关闭自定义回复！\n群内工作状态:{$t旧群内状态}-->关")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["关闭自定义回复"] {
-							srcText := "<{核心:骰子名字}>已在此群内关闭自定义回复！\n群内工作状态:{$t旧群内状态}-->关"
-							d.TextMapRaw["核心"]["关闭自定义回复"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["关闭自定义回复"] {
-							d.TextMapRaw["核心"]["关闭自定义回复"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "addgroup":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子进群", "<{核心:骰子名字}> 已经就绪。可通过.help查看手册  \n[图]src=data/images/sealdice.png\nCOC/DND玩家可以使用.set coc/dnd在两种模式中切换\n已搭载自动重连，如遇风控不回可稍作等待")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子进群"] {
-							srcText := "<{核心:骰子名字}> 已经就绪。可通过.help查看手册\n[图:data/images/sealdice.png]\nCOC/DND玩家可以使用.set coc/dnd在两种模式中切换\n已搭载自动重连，如遇风控不回可稍作等待"
-							d.TextMapRaw["核心"]["骰子进群"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子进群"] {
-							d.TextMapRaw["核心"]["骰子进群"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "addfriend":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子成为好友", "<{核心:骰子名字}> 已经就绪。可通过.help查看手册，请拉群测试，私聊容易被企鹅吃掉。\n[图]src=data/images/sealdice.png")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子成为好友"] {
-							srcText := "<{核心:骰子名字}> 已经就绪。可通过.help查看手册，请拉群测试，私聊容易被企鹅吃掉。\n[图:data/images/sealdice.png]"
-							d.TextMapRaw["核心"]["骰子成为好友"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子成为好友"] {
-							d.TextMapRaw["核心"]["骰子成为好友"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "groupexitannounce":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子退群预告", "收到指令，5s后将退出当前群组")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子退群预告"] {
-							srcText := "收到指令，5s后将退出当前群组"
-							d.TextMapRaw["核心"]["骰子退群预告"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子退群预告"] {
-							d.TextMapRaw["核心"]["骰子退群预告"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "groupexit":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子自动退群告别语", "由于长时间不使用，{核心:骰子名字}将退出本群，感谢您的使用。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子自动退群告别语"] {
-							srcText := "由于长时间不使用，{核心:骰子名字}将退出本群，感谢您的使用。"
-							d.TextMapRaw["核心"]["骰子自动退群告别语"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子自动退群告别语"] {
-							d.TextMapRaw["核心"]["骰子自动退群告别语"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "savesetup":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子保存设置", "数据已保存")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子保存设置"] {
-							srcText := "数据已保存"
-							d.TextMapRaw["核心"]["骰子保存设置"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子保存设置"] {
-							d.TextMapRaw["核心"]["骰子保存设置"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "additionalstatus":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰子状态附加文本", "供职于{$t供职群数}个群，其中{$t启用群数}个处于开启状态。{$t群内工作状态}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰子状态附加文本"] {
-							srcText := "供职于{$t供职群数}个群，其中{$t启用群数}个处于开启状态。{$t群内工作状态}"
-							d.TextMapRaw["核心"]["骰子状态附加文本"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰子状态附加文本"] {
-							d.TextMapRaw["核心"]["骰子状态附加文本"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "reasonofrollprefix":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰点_原因", "由于{$t原因}，")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰点_原因"] {
-							srcText := "由于{$t原因}，"
-							d.TextMapRaw["核心"]["骰点_原因"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰点_原因"] {
-							d.TextMapRaw["核心"]["骰点_原因"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "rolldiceeqvt":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰点_单项结果文本", "{$t表达式文本}{$t计算过程}={$t计算结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰点_单项结果文本"] {
-							srcText := "{$t表达式文本}{$t计算过程}={$t计算结果}"
-							d.TextMapRaw["核心"]["骰点_单项结果文本"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰点_单项结果文本"] {
-							d.TextMapRaw["核心"]["骰点_单项结果文本"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "rolldice":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰点", "{$t原因句子}{$t玩家}掷出了 {$t结果文本}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰点"] {
-							srcText := "{$t原因句子}{$t玩家}掷出了 {$t结果文本}"
-							d.TextMapRaw["核心"]["骰点"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰点"] {
-							d.TextMapRaw["核心"]["骰点"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "rollmultidice":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:骰点_多轮", "{$t原因句子}{$t玩家}掷骰{$t次数}次:\n{$t结果文本}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["骰点_多轮"] {
-							srcText := "{$t原因句子}{$t玩家}掷骰{$t次数}次:\n{$t结果文本}"
-							d.TextMapRaw["核心"]["骰点_多轮"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["骰点_多轮"] {
-							d.TextMapRaw["核心"]["骰点_多轮"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pcnewemptycard":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_新建", "新建角色且自动绑定: {$t角色名}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_新建"] {
-							srcText := "新建角色且自动绑定: {$t角色名}"
-							d.TextMapRaw["核心"]["角色管理_新建"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_新建"] {
-							d.TextMapRaw["核心"]["角色管理_新建"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pcnameexist":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_新建_已存在", "已存在同名角色")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_新建_已存在"] {
-							srcText := "已存在同名角色"
-							d.TextMapRaw["核心"]["角色管理_新建_已存在"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_新建_已存在"] {
-							d.TextMapRaw["核心"]["角色管理_新建_已存在"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardset":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_成功", "切换角色\"{$t角色名}\"，绑定成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_成功"] {
-							srcText := "切换角色\"{$t角色名}\"，绑定成功"
-							d.TextMapRaw["核心"]["角色管理_绑定_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_成功"] {
-							d.TextMapRaw["核心"]["角色管理_绑定_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardtagnotexist":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_失败", "角色\"{$t角色名}\"绑定失败，角色不存在")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_失败"] {
-							srcText := "角色\"{$t角色名}\"绑定失败，角色不存在"
-							d.TextMapRaw["核心"]["角色管理_绑定_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_失败"] {
-							d.TextMapRaw["核心"]["角色管理_绑定_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccarduntag":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_解除", "角色\"{$t角色名}\"绑定已解除，切换至群内角色卡")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_解除"] {
-							srcText := "角色\"{$t角色名}\"绑定已解除，切换至群内角色卡"
-							d.TextMapRaw["核心"]["角色管理_绑定_解除"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_解除"] {
-							d.TextMapRaw["核心"]["角色管理_绑定_解除"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardnotagged":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_绑定_并未绑定", "当前群内并未绑定角色")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"] {
-							srcText := "当前群内并未绑定角色"
-							d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"] {
-							d.TextMapRaw["核心"]["角色管理_绑定_并未绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pcloaded":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_加载成功", "角色{$t玩家}加载成功，欢迎回来")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_加载成功"] {
-							srcText := "角色{$t玩家}加载成功，欢迎回来"
-							d.TextMapRaw["核心"]["角色管理_加载成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_加载成功"] {
-							d.TextMapRaw["核心"]["角色管理_加载成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardalreadytagged":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_加载失败_已绑定", "当前群内是绑卡状态，请解除绑卡后进行此操作！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"] {
-							srcText := "当前群内是绑卡状态，请解除绑卡后进行此操作！"
-							d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"] {
-							d.TextMapRaw["核心"]["角色管理_加载失败_已绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardnotexist":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_角色不存在", "无法加载/删除角色：你所指定的角色不存在")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_角色不存在"] {
-							srcText := "无法加载/删除角色：你所指定的角色不存在"
-							d.TextMapRaw["核心"]["角色管理_角色不存在"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_角色不存在"] {
-							d.TextMapRaw["核心"]["角色管理_角色不存在"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardnotserialized":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_序列化失败", "无法加载/保存角色：序列化失败")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_序列化失败"] {
-							srcText := "无法加载/保存角色：序列化失败"
-							d.TextMapRaw["核心"]["角色管理_序列化失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_序列化失败"] {
-							d.TextMapRaw["核心"]["角色管理_序列化失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardsaved":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_储存成功", "角色\"{$t角色名}\"储存成功\n注: 非秘密团不用开团前存卡，跑团后save即可")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_储存成功"] {
-							srcText := "角色\"{$t角色名}\"储存成功\n注: 非秘密团不用开团前存卡，跑团后save即可"
-							d.TextMapRaw["核心"]["角色管理_储存成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_储存成功"] {
-							d.TextMapRaw["核心"]["角色管理_储存成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardnotsavedbuttagged":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_储存失败_已绑定", "角色卡\"{$t角色名}\"是绑定状态，无法进行save操作")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_储存_失败_已绑定"] {
-							srcText := "角色卡\"{$t角色名}\"是绑定状态，无法进行save操作"
-							d.TextMapRaw["核心"]["角色管理_储存失败_已绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_储存失败_已绑定"] {
-							d.TextMapRaw["核心"]["角色管理_储存失败_已绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccarddel":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_删除成功", "角色\"{$t角色名}\"删除成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_删除成功"] {
-							srcText := "角色\"{$t角色名}\"删除成功"
-							d.TextMapRaw["核心"]["角色管理_删除成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_删除成功"] {
-							d.TextMapRaw["核心"]["角色管理_删除成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardnotdelbuttagged":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_删除失败_已绑定", "角色卡\"{$t角色名}\"是绑定状态，\".pc untagAll {$t角色名}\"解除绑卡后再操作吧")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"] {
-							srcText := "角色卡\"{$t角色名}\"是绑定状态，\".pc untagAll {$t角色名}\"解除绑卡后再操作吧"
-							d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"] {
-							d.TextMapRaw["核心"]["角色管理_删除失败_已绑定"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "pccardcurrentdel":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:角色管理_删除成功_当前卡", "由于你删除的角色是当前角色，昵称和属性将被一同清空")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"] {
-							srcText := "由于你删除的角色是当前角色，昵称和属性将被一同清空"
-							d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"] {
-							d.TextMapRaw["核心"]["角色管理_删除成功_当前卡"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "notadmin":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:提示_无权限_非master/管理", "你不是管理员或master")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["提示_无权限_非master/管理"] {
-							srcText := "你不是管理员或master"
-							d.TextMapRaw["核心"]["提示_无权限_非master/管理"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["提示_无权限_非master/管理"] {
-							d.TextMapRaw["核心"]["提示_无权限_非master/管理"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "notmaster":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:提示_无权限_非master", "你不是master")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["提示_无权限_非master"] {
-							srcText := "你不是master"
-							d.TextMapRaw["核心"]["提示_无权限_非master"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["提示_无权限_非master"] {
-							d.TextMapRaw["核心"]["提示_无权限_非master"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "sendmsgmaster":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:留言_已记录", "您的留言已被记录，另外注意不要滥用此功能，祝您生活愉快，再会。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["留言_已记录"] {
-							srcText := "您的留言已被记录，另外注意不要滥用此功能，祝您生活愉快，再会。"
-							d.TextMapRaw["核心"]["留言_已记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["留言_已记录"] {
-							d.TextMapRaw["核心"]["留言_已记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "admingroupexit":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:提示_手动退群前缀", "因长期不使用等原因，骰主后台操作退群")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["提示_手动退群前缀"] {
-							srcText := "因长期不使用等原因，骰主后台操作退群"
-							d.TextMapRaw["核心"]["提示_手动退群前缀"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["提示_手动退群前缀"] {
-							d.TextMapRaw["核心"]["提示_手动退群前缀"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "censornotice":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:拦截_警告内容_提醒级", "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_提醒级"] {
-							srcText := "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！"
-							d.TextMapRaw["核心"]["拦截_警告内容_提醒级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_提醒级"] {
-							d.TextMapRaw["核心"]["拦截_警告内容_提醒级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "censorcaution":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:拦截_警告内容_注意级", "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_注意级"] {
-							srcText := "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！"
-							d.TextMapRaw["核心"]["拦截_警告内容_注意级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_注意级"] {
-							d.TextMapRaw["核心"]["拦截_警告内容_注意级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "censorwarning":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:拦截_警告内容_警告级", "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_警告级"] {
-							srcText := "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！"
-							d.TextMapRaw["核心"]["拦截_警告内容_警告级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_警告级"] {
-							d.TextMapRaw["核心"]["拦截_警告内容_警告级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "censordanger":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:拦截_警告内容_危险级", "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_危险级"] {
-							srcText := "你已多次触发不当内容拦截，{核心:骰子名字}已经无法忍受！"
-							d.TextMapRaw["核心"]["拦截_警告内容_危险级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["拦截_警告内容_危险级"] {
-							d.TextMapRaw["核心"]["拦截_警告内容_危险级"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "spamperson":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:刷屏_警告内容_个人", "警告：您的指令频率过高，请注意。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["刷屏_警告内容_个人"] {
-							srcText := "警告：您的指令频率过高，请注意。"
-							d.TextMapRaw["核心"]["刷屏_警告内容_个人"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["刷屏_警告内容_个人"] {
-							d.TextMapRaw["核心"]["刷屏_警告内容_个人"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "spamgroup":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:刷屏_警告内容_群组", "警告：该群组内指令频率过高，请注意。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["刷屏_警告内容_群组"] {
-							srcText := "警告：该群组内指令频率过高，请注意。"
-							d.TextMapRaw["核心"]["刷屏_警告内容_群组"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["刷屏_警告内容_群组"] {
-							d.TextMapRaw["核心"]["刷屏_警告内容_群组"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "blockcommanrecieved":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:拦截_完全拦截_收到的指令", "命令包含不当内容，{核心:骰子名字}拒绝响应。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["拦截_完全拦截_收到的指令"] {
-							srcText := "命令包含不当内容，{核心:骰子名字}拒绝响应。"
-							d.TextMapRaw["核心"]["拦截_完全拦截_收到的指令"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["拦截_完全拦截_收到的指令"] {
-							d.TextMapRaw["核心"]["拦截_完全拦截_收到的指令"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "blockmessagetosend":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:拦截_完全拦截_发出的消息", "试图使{核心:骰子名字}回复不当内容，拒绝响应。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["拦截_完全拦截_发出的消息"] {
-							srcText := "试图使{核心:骰子名字}回复不当内容，拒绝响应。"
-							d.TextMapRaw["核心"]["拦截_完全拦截_发出的消息"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["拦截_完全拦截_发出的消息"] {
-							d.TextMapRaw["核心"]["拦截_完全拦截_发出的消息"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "blacktriggerperson":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:黑名单触发_当事人", "提醒：你引发了黑名单事件:\n{$t黑名单事件}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["黑名单触发_当事人"] {
-							srcText := "提醒：你引发了黑名单事件:\n{$t黑名单事件}"
-							d.TextMapRaw["核心"]["黑名单触发_当事人"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["黑名单触发_当事人"] {
-							d.TextMapRaw["核心"]["黑名单触发_当事人"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "blacktriggergroup":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:黑名单触发_所在群", "提醒：当前群组发生了黑名单事件:\n{$t黑名单事件}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["黑名单触发_所在群"] {
-							srcText := "提醒：当前群组发生了黑名单事件:\n{$t黑名单事件}"
-							d.TextMapRaw["核心"]["黑名单触发_所在群"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["黑名单触发_所在群"] {
-							d.TextMapRaw["核心"]["黑名单触发_所在群"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "blacktriggerinviter":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "核心:黑名单触发_邀请人", "提醒: 你邀请的骰子在群组<{$t事发群名}>({$t事发群号})中遭遇黑名单事件:\n{$t黑名单事件}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["核心"]["黑名单触发_邀请人"] {
-							srcText := "提醒: 你邀请的骰子在群组<{$t事发群名}>({$t事发群号})中遭遇黑名单事件:\n{$t黑名单事件}"
-							d.TextMapRaw["核心"]["黑名单触发_邀请人"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["核心"]["黑名单触发_邀请人"] {
-							d.TextMapRaw["核心"]["黑名单触发_邀请人"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "jrrp":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "娱乐:今日人品", "{$t玩家} 今日人品为{$t人品}，{%\n    $t人品 > 95 ? '人品爆表！',\n    $t人品 > 80 ? '运气还不错！',\n    $t人品 > 50 ? '人品还行吧',\n    $t人品 > 10 ? '今天不太行',\n    1 ? '流年不利啊！'\n%}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["娱乐"]["今日人品"] {
-							srcText := "{$t玩家} 今日人品为{$t人品}，{%\n    $t人品 > 95 ? '人品爆表！',\n    $t人品 > 80 ? '运气还不错！',\n    $t人品 > 50 ? '人品还行吧',\n    $t人品 > 10 ? '今天不太行',\n    1 ? '流年不利啊！'\n%}"
-							d.TextMapRaw["娱乐"]["今日人品"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["娱乐"]["今日人品"] {
-							d.TextMapRaw["娱乐"]["今日人品"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "decklist":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_列表", "{$t原始列表}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_列表"] {
-							srcText := "{$t原始列表}"
-							d.TextMapRaw["其它"]["抽牌_列表"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_列表"] {
-							d.TextMapRaw["其它"]["抽牌_列表"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "drawkey":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_列表", "{$t原始列表}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_列表"] {
-							srcText := "{$t原始列表}"
-							d.TextMapRaw["其它"]["抽牌_列表"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_列表"] {
-							d.TextMapRaw["其它"]["抽牌_列表"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "nodeck":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_列表_没有牌组", "呃，没有发现任何牌组")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_列表_没有牌组"] {
-							srcText := "呃，没有发现任何牌组"
-							d.TextMapRaw["其它"]["抽牌_列表_没有牌组"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_列表_没有牌组"] {
-							d.TextMapRaw["其它"]["抽牌_列表_没有牌组"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "deckcitenotfound":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_找不到牌组", "找不到这个牌组")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_找不到牌组"] {
-							srcText := "找不到这个牌组"
-							d.TextMapRaw["其它"]["抽牌_找不到牌组"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_找不到牌组"] {
-							d.TextMapRaw["其它"]["抽牌_找不到牌组"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "deckcitenotfoundbuthavesimilar":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_找不到牌组_存在类似", "未找到牌组，但发现一些相似的:")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_找不到牌组_存在类似"] {
-							srcText := "未找到牌组，但发现一些相似的:"
-							d.TextMapRaw["其它"]["抽牌_找不到牌组_存在类似"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_找不到牌组_存在类似"] {
-							d.TextMapRaw["其它"]["抽牌_找不到牌组_存在类似"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "deckspliter":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_分隔符", `\n\n`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_分隔符"] {
-							srcText := `\n\n`
-							d.TextMapRaw["其它"]["抽牌_分隔符"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_分隔符"] {
-							d.TextMapRaw["其它"]["抽牌_分隔符"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "deckresultprefix":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:抽牌_结果前缀", ``)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["抽牌_结果前缀"] {
-							srcText := ``
-							d.TextMapRaw["其它"]["抽牌_结果前缀"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["抽牌_结果前缀"] {
-							d.TextMapRaw["其它"]["抽牌_结果前缀"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "randomnamegenerate":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:随机名字", "为{$t玩家}生成以下名字：\n{$t随机名字文本}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["随机名字"] {
-							srcText := "为{$t玩家}生成以下名字：\n{$t随机名字文本}"
-							d.TextMapRaw["其它"]["随机名字"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["随机名字"] {
-							d.TextMapRaw["其它"]["随机名字"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "randomnamespliter":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:随机名字_分隔符", "、")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["随机名字_分隔符"] {
-							srcText := "、"
-							d.TextMapRaw["其它"]["随机名字_分隔符"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["随机名字_分隔符"] {
-							d.TextMapRaw["其它"]["随机名字_分隔符"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "poke":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:戳一戳", "{核心:骰子名字}咕踊了一下")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["戳一戳"] {
-							srcText := "{核心:骰子名字}咕踊了一下"
-							d.TextMapRaw["其它"]["戳一戳"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["戳一戳"] {
-							d.TextMapRaw["其它"]["戳一戳"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "ping":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "其它:ping响应", "pong！这里是{核心:骰子名字}{$t请求结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["其它"]["ping响应"] {
-							srcText := "pong！这里是{核心:骰子名字}{$t请求结果}"
-							d.TextMapRaw["其它"]["ping响应"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["其它"]["ping响应"] {
-							d.TextMapRaw["其它"]["ping响应"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "lognew":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_新建", `新的故事开始了，祝旅途愉快！\n记录已经开启`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_新建"] {
-							srcText := `新的故事开始了，祝旅途愉快！\n记录已经开启`
-							d.TextMapRaw["日志"]["记录_新建"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_新建"] {
-							d.TextMapRaw["日志"]["记录_新建"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logon":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_成功", `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_开启_成功"] {
-							srcText := `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`
-							d.TextMapRaw["日志"]["记录_开启_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_开启_成功"] {
-							d.TextMapRaw["日志"]["记录_开启_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logonsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_成功", `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_开启_成功"] {
-							srcText := `故事"{$t记录名称}"的记录已经继续开启，当前已记录文本{$t当前记录条数}`
-							d.TextMapRaw["日志"]["记录_开启_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_开启_成功"] {
-							d.TextMapRaw["日志"]["记录_开启_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logonfailnolog":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_失败_无此记录", `无法继续，没能找到记录: {$t记录名称}`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_无此记录"] {
-							srcText := `无法继续，没能找到记录: {$t记录名称}`
-							d.TextMapRaw["日志"]["记录_开启_失败_无此记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_无此记录"] {
-							d.TextMapRaw["日志"]["记录_开启_失败_无此记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logonfailnotnew":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_失败_尚未新建", `找不到记录，请使用.log new新建记录`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_尚未新建"] {
-							srcText := `找不到记录，请使用.log new新建记录`
-							d.TextMapRaw["日志"]["记录_开启_失败_尚未新建"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_尚未新建"] {
-							d.TextMapRaw["日志"]["记录_开启_失败_尚未新建"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logonalready":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_失败_未结束的记录", `当前已有记录中的日志{$t记录名称}，请先将其结束。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"] {
-							srcText := `当前已有记录中的日志{$t记录名称}，请先将其结束。`
-							d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"] {
-							d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logonfailunfinished":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_开启_失败_未结束的记录", `当前已有记录中的日志{$t记录名称}，请先将其结束。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"] {
-							srcText := `当前已有记录中的日志{$t记录名称}，请先将其结束。`
-							d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"] {
-							d.TextMapRaw["日志"]["记录_开启_失败_未结束的记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logoff":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_关闭_成功", `当前记录"{$t记录名称}"已经暂停，已记录文本{$t当前记录条数}条\n结束故事并传送日志请用.log end`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_关闭_成功"] {
-							srcText := `当前记录"{$t记录名称}"已经暂停，已记录文本{$t当前记录条数}条\n结束故事并传送日志请用.log end`
-							d.TextMapRaw["日志"]["记录_关闭_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_关闭_成功"] {
-							d.TextMapRaw["日志"]["记录_关闭_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logoffsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_关闭_成功", `当前记录"{$t记录名称}"已经暂停，已记录文本{$t当前记录条数}条\n结束故事并传送日志请用.log end`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_关闭_成功"] {
-							srcText := `当前记录"{$t记录名称}"已经暂停，已记录文本{$t当前记录条数}条\n结束故事并传送日志请用.log end`
-							d.TextMapRaw["日志"]["记录_关闭_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_关闭_成功"] {
-							d.TextMapRaw["日志"]["记录_关闭_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logofffail":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_关闭_失败", `没有找到正在进行的记录，已经是关闭状态。这可能表示您忘记了开启记录。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_关闭_失败"] {
-							srcText := `没有找到正在进行的记录，已经是关闭状态。这可能表示您忘记了开启记录。`
-							d.TextMapRaw["日志"]["记录_关闭_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_关闭_失败"] {
-							d.TextMapRaw["日志"]["记录_关闭_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logexportnotcertainlog":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_取出_未指定记录", `命令格式错误：当前没有开启状态的记录，或没有通过参数指定要取出的日志。请参考帮助。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_取出_未指定记录"] {
-							srcText := `命令格式错误：当前没有开启状态的记录，或没有通过参数指定要取出的日志。请参考帮助。`
-							d.TextMapRaw["日志"]["记录_取出_未指定记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_取出_未指定记录"] {
-							d.TextMapRaw["日志"]["记录_取出_未指定记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "loglistprefix":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_列出_导入语", `正在列出存在于此群的记录:`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_列出_导入语"] {
-							srcText := `正在列出存在于此群的记录:`
-							d.TextMapRaw["日志"]["记录_列出_导入语"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_列出_导入语"] {
-							d.TextMapRaw["日志"]["记录_列出_导入语"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logend":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_结束", `故事落下了帷幕。\n记录已经关闭。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_结束"] {
-							srcText := `故事落下了帷幕。\n记录已经关闭。`
-							d.TextMapRaw["日志"]["记录_结束"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_结束"] {
-							d.TextMapRaw["日志"]["记录_结束"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logendsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_结束", `故事落下了帷幕。\n记录已经关闭。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_结束"] {
-							srcText := `故事落下了帷幕。\n记录已经关闭。`
-							d.TextMapRaw["日志"]["记录_结束"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_结束"] {
-							d.TextMapRaw["日志"]["记录_结束"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "lognewbutunfinished":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_新建_失败_未结束的记录", `上一段旅程{$t记录名称}还未结束，请先使用.log end结束故事。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_新建_失败_未结束的记录"] {
-							srcText := `上一段旅程{$t记录名称}还未结束，请先使用.log end结束故事。`
-							d.TextMapRaw["日志"]["记录_新建_失败_未结束的记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_新建_失败_未结束的记录"] {
-							d.TextMapRaw["日志"]["记录_新建_失败_未结束的记录"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "loglengthnotice":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_条数提醒", `提示: 当前故事的文本已经记录了 {$t条数} 条`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_条数提醒"] {
-							srcText := `提示: 当前故事的文本已经记录了 {$t条数} 条`
-							d.TextMapRaw["日志"]["记录_条数提醒"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_条数提醒"] {
-							d.TextMapRaw["日志"]["记录_条数提醒"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logdelete":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_删除_成功", "删除记录 {$t记录名称} 成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_删除_成功"] {
-							srcText := "删除记录 {$t记录名称} 成功"
-							d.TextMapRaw["日志"]["记录_删除_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_删除_成功"] {
-							d.TextMapRaw["日志"]["记录_删除_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logdeletesuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_删除_成功", "删除记录 {$t记录名称} 成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_删除_成功"] {
-							srcText := "删除记录 {$t记录名称} 成功"
-							d.TextMapRaw["日志"]["记录_删除_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_删除_成功"] {
-							d.TextMapRaw["日志"]["记录_删除_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logdeletefailnotfound":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_删除_失败_找不到", "删除记录 {$t记录名称} 失败，可能是名字不对")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_删除_失败_找不到"] {
-							srcText := "删除记录 {$t记录名称} 失败，可能是名字不对"
-							d.TextMapRaw["日志"]["记录_删除_失败_找不到"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_删除_失败_找不到"] {
-							d.TextMapRaw["日志"]["记录_删除_失败_找不到"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logdeletefailcontinuing":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_删除_失败_正在进行", "记录 {$t记录名称} 正在进行，无法删除。请先用 log end 结束记录，如不希望上传请用 log halt。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_删除_失败_正在进行"] {
-							srcText := "记录 {$t记录名称} 正在进行，无法删除。请先用 log end 结束记录，如不希望上传请用 log halt。"
-							d.TextMapRaw["日志"]["记录_删除_失败_正在进行"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_删除_失败_正在进行"] {
-							d.TextMapRaw["日志"]["记录_删除_失败_正在进行"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "obenter":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:OB_开启", "你将成为观众（自动修改昵称和群名片[如有权限]，并不会给观众发送暗骰结果）。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["OB_开启"] {
-							srcText := "你将成为观众（自动修改昵称和群名片[如有权限]，并不会给观众发送暗骰结果）。"
-							d.TextMapRaw["日志"]["OB_开启"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["OB_开启"] {
-							d.TextMapRaw["日志"]["OB_开启"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "obexit":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:OB_关闭", "你不再是观众了（自动修改昵称和群名片[如有权限]）。")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["OB_关闭"] {
-							srcText := "你不再是观众了（自动修改昵称和群名片[如有权限]）。"
-							d.TextMapRaw["日志"]["OB_关闭"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["OB_关闭"] {
-							d.TextMapRaw["日志"]["OB_关闭"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logupload":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_上传_成功", `跑团日志已上传服务器，链接如下：{$t日志链接}`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
-							srcText := `跑团日志已上传服务器，链接如下：{$t日志链接}`
-							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
-							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "loguploadsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_上传_成功", `跑团日志已上传服务器，链接如下：{$t日志链接}`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
-							srcText := `跑团日志已上传服务器，链接如下：{$t日志链接}`
-							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_上传_成功"] {
-							d.TextMapRaw["日志"]["记录_上传_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "loguploadfail":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_上传_失败", `跑团日志上传失败：{$t错误原因}\n若未出现线上日志地址，可换时间重试，或联系骰主在data/default/log-exports路径下取出日志\n文件名: 群号_日志名_随机数.zip\n注意此文件log end/get后才会生成`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_上传_失败"] {
-							srcText := `跑团日志上传失败：{$t错误原因}\n若未出现线上日志地址，可换时间重试，或联系骰主在data/default/log-exports路径下取出日志\n文件名: 群号_日志名_随机数.zip\n注意此文件log end/get后才会生成`
-							d.TextMapRaw["日志"]["记录_上传_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_上传_失败"] {
-							d.TextMapRaw["日志"]["记录_上传_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logexport":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_导出_成功", `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
-							srcText := `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`
-							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
-							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "logexportsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:记录_导出_成功", `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
-							srcText := `日志文件《{$t文件名字}》已上传至群文件，请自行到群文件查看。`
-							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["记录_导出_成功"] {
-							d.TextMapRaw["日志"]["记录_导出_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "syncname":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:名片_自动设置", `已自动设置名片格式为{$t名片格式}：{$t名片预览}\n如有权限会在属性更新时自动更新名片。使用.sn off可关闭。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["名片_自动设置"] {
-							srcText := `已自动设置名片格式为{$t名片格式}：{$t名片预览}\n如有权限会在属性更新时自动更新名片。使用.sn off可关闭。`
-							d.TextMapRaw["日志"]["名片_自动设置"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["名片_自动设置"] {
-							d.TextMapRaw["日志"]["名片_自动设置"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "syncnamecancel":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "日志:名片_取消设置", `已关闭对{$t玩家}的名片自动修改。`)
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["日志"]["名片_取消设置"] {
-							srcText := `已关闭对{$t玩家}的名片自动修改。`
-							d.TextMapRaw["日志"]["名片_取消设置"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["日志"]["名片_取消设置"] {
-							d.TextMapRaw["日志"]["名片_取消设置"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			case "setcocrule":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:设置房规_当前", "当前房规: {$t房规}\n{$t房规文本}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["设置房规_当前"] {
-							srcText := "当前房规: {$t房规}\n{$t房规文本}"
-							d.TextMapRaw["COC"]["设置房规_当前"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["设置房规_当前"] {
-							d.TextMapRaw["COC"]["设置房规_当前"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "fumble":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_大失败", "大失败！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_大失败"] {
-							srcText := "大失败！"
-							d.TextMapRaw["COC"]["判定_大失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_大失败"] {
-							d.TextMapRaw["COC"]["判定_大失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "failure":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_失败", "失败！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_失败"] {
-							srcText := "失败！"
-							d.TextMapRaw["COC"]["判定_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_失败"] {
-							d.TextMapRaw["COC"]["判定_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "success":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_成功_普通", "成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_成功_普通"] {
-							srcText := "成功"
-							d.TextMapRaw["COC"]["判定_成功_普通"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_成功_普通"] {
-							d.TextMapRaw["COC"]["判定_成功_普通"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "hardsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_成功_困难", "困难成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_成功_困难"] {
-							srcText := "困难成功"
-							d.TextMapRaw["COC"]["判定_成功_困难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_成功_困难"] {
-							d.TextMapRaw["COC"]["判定_成功_困难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "extremesucces":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_成功_极难", "极难成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_成功_极难"] {
-							srcText := "极难成功"
-							d.TextMapRaw["COC"]["判定_成功_极难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_成功_极难"] {
-							d.TextMapRaw["COC"]["判定_成功_极难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.        yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "criticalsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_大成功", "运气不错，大成功！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_大成功"] {
-							srcText := "运气不错，大成功！"
-							d.TextMapRaw["COC"]["判定_大成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_大成功"] {
-							d.TextMapRaw["COC"]["判定_大成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "musthardsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_必须_困难_成功", "成功了！这要费点力气{$t附加判定结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_必须_困难_成功"] {
-							srcText := "成功了！这要费点力气{$t附加判定结果}"
-							d.TextMapRaw["COC"]["判定_必须_困难_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_必须_困难_成功"] {
-							d.TextMapRaw["COC"]["判定_必须_困难_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "musthardfailure":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_必须_困难_失败", "失败！还是有点难吧？{$t附加判定结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_必须_困难_失败"] {
-							srcText := "失败！还是有点难吧？{$t附加判定结果}"
-							d.TextMapRaw["COC"]["判定_必须_困难_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_必须_困难_失败"] {
-							d.TextMapRaw["COC"]["判定_必须_困难_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "mustextremesuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_必须_极难_成功", "居然成功了！运气不错啊！{$t附加判定结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_必须_极难_成功"] {
-							srcText := "居然成功了！运气不错啊！{$t附加判定结果}"
-							d.TextMapRaw["COC"]["判定_必须_极难_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_必须_极难_成功"] {
-							d.TextMapRaw["COC"]["判定_必须_极难_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "mustextremefailure":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_必须_极难_失败", "失败了，不要太勉强自己{$t附加判定结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_必须_极难_失败"] {
-							srcText := "失败了，不要太勉强自己{$t附加判定结果}"
-							d.TextMapRaw["COC"]["判定_必须_极难_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_必须_极难_失败"] {
-							d.TextMapRaw["COC"]["判定_必须_极难_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "mustcriticalsuccesssuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_必须_大成功_成功", "大成功！越过无数失败的命运，你握住了唯一的胜机！")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["        判定_必须_大成功_成功"] {
-							srcText := "大成功！越过无数失败的命运，你握住了唯一的胜机！"
-							d.TextMapRaw["COC"]["判定_必须_大成功_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_必须_大成功_成功"] {
-							d.TextMapRaw["COC"]["判定_必须_大成功_成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "mustcriticalsuccessfailure":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_必须_大成功_失败", "失败了，不出所料{$t附加判定结果}")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_必须_大成功_失败"] {
-							srcText := "失败了，不出所料{$t附加判定结果}"
-							d.TextMapRaw["COC"]["判定_必须_大成功_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_必须_大成功_失败"] {
-							d.TextMapRaw["COC"]["判定_必须_大成功_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "rollfumble":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_简短_大失败", "大失败")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_简短_大失败"] {
-							srcText := "大失败"
-							d.TextMapRaw["COC"]["判定_简短_大失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_简短_大失败"] {
-							d.TextMapRaw["COC"]["判定_简短_大失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "rollfailure":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_简短_失败", "失败")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_简短_失败"] {
-							srcText := "失败"
-							d.TextMapRaw["COC"]["判定_简短_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_简短_失败"] {
-							d.TextMapRaw["COC"]["判定_简短_失败"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "rollsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_简短_成功_普通", "成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_简短_成功_普通"] {
-							srcText := "成功"
-							d.TextMapRaw["COC"]["判定_简短_成功_普通"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_简短_成功_普通"] {
-							d.TextMapRaw["COC"]["判定_简短_成功_普通"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "rollhardsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_简短_成功_困难", "困难成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_简短_成功_困难"] {
-							srcText := "困难成功"
-							d.TextMapRaw["COC"]["判定_简短_成功_困难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_简短_成功_困难"] {
-							d.TextMapRaw["COC"]["判定_简短_成功_困难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "rollextremesuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_简短_成功_极难", "极难成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_简短_成功_极难"] {
-							srcText := "极难成功"
-							d.TextMapRaw["COC"]["判定_简短_成功_极难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_简短_成功_极难"] {
-							d.TextMapRaw["COC"]["判定_简短_成功_极难"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-			case "rollcriticalsuccess":
-				if cmdNum == 1 || subval == "help" {
-					text := DiceFormatReplyshow(val, ctx, "COC:判定_简短_大成功", "大成功")
-					ReplyToSender(ctx, msg, text)
-				} else {
-					if subval == "clr" || subval == "del" || subval == "default" {
-						for index := range d.TextMapRaw["COC"]["判定_简短_大成功"] {
-							srcText := "大成功"
-							d.TextMapRaw["COC"]["判定_简短_大成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s", "已重置词条: ", val))
-					} else {
-						srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
-						srcText = strings.TrimSpace(srcText)
-						for index := range d.TextMapRaw["COC"]["判定_简短_大成功"] {
-							d.TextMapRaw["COC"]["判定_简短_大成功"][index][0] = srcText
-						}
-						SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
-						d.GenerateTextMap()
-						d.SaveText()
-						ReplyToSender(ctx, msg, fmt.Sprintf("%s%s%s%s", "已将词条: ", val, "设为: ", srcText))
-					}
-				}
-
-			default:
-				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
-			}
+			handleTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},
 	}

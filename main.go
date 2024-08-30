@@ -139,25 +139,6 @@ func cleanupCreate(diceManager *dice.DiceManager) func() {
 	}
 }
 
-func deleteOldWrongFile() {
-	_ = os.Remove("./data/names/data-logs.db")
-	_ = os.Remove("./data/names/names.zip")
-	_ = os.Remove("./data/names/serve.yaml")
-	_ = os.Remove("./data/names/names/names.xlsx")
-	_ = os.Remove("./data/names/names/names-dnd.xlsx")
-	_ = os.Remove("./data/names/names")
-
-	// 1.2.5之前版本兼容
-	_ = os.RemoveAll("./data/helpdoc/DND/3R")
-	_ = os.RemoveAll("./data/helpdoc/DND/核心")
-	_ = os.RemoveAll("./data/helpdoc/DND/扩展")
-	_ = os.RemoveAll("./data/helpdoc/DND/模组")
-	_ = os.RemoveAll("./data/helpdoc/DND/破解奥秘")
-	_ = os.Remove("./data/helpdoc/DND/法术列表大全.xlsx")
-	_ = os.Remove("./data/helpdoc/DND/名词解释.xlsx")
-	_ = os.Remove("./data/helpdoc/DND/子职列表大全.xlsx")
-}
-
 func fixTimezone() {
 	out, err := exec.Command("/system/bin/getprop", "persist.sys.timezone").Output()
 	if err != nil {
@@ -171,6 +152,7 @@ func fixTimezone() {
 }
 
 func main() {
+	initStartTime := time.Now().UnixMicro()
 	var opts struct {
 		Version                bool   `long:"version" description:"显示版本号"`
 		Install                bool   `short:"i" long:"install" description:"安装为系统服务"`
@@ -216,8 +198,6 @@ func main() {
 		}
 		return
 	}
-	deleteOldWrongFile()
-
 	if opts.Delay != 0 {
 		fmt.Println("延迟启动", opts.Delay, "秒")
 		time.Sleep(time.Duration(opts.Delay) * time.Second)
@@ -369,28 +349,6 @@ func main() {
 		showMsgBox("数据库缓存文件删除失败", "为避免数据损坏，拒绝继续启动。请检查是否启动多份程序，或有其他程序正在使用数据库文件！")
 		return
 	}
-
-	// 尝试进行升级
-	migrate.TryMigrateToV12()
-	// 尝试修正log_items表的message字段类型
-	if migrateErr := migrate.LogItemFixDatatype(); migrateErr != nil {
-		logger.Errorf("修正log_items表时出错，%s", migrateErr.Error())
-		return
-	}
-	// v131迁移历史设置项到自定义文案
-	if migrateErr := migrate.V131DeprecatedConfig2CustomText(); migrateErr != nil {
-		logger.Errorf("迁移历史设置项时出错，%s", migrateErr.Error())
-		return
-	}
-	// v141重命名刷屏警告字段
-	if migrateErr := migrate.V141DeprecatedConfigRename(); migrateErr != nil {
-		logger.Errorf("迁移历史设置项时出错，%s", migrateErr.Error())
-		return
-	}
-	// v144删除旧的帮助文档
-	if migrateErr := migrate.V144RemoveOldHelpdoc(); migrateErr != nil {
-		logger.Errorf("移除旧帮助文档时出错，%v", migrateErr)
-	}
 	// v150升级
 	if !migrate.V150Upgrade() {
 		return
@@ -409,11 +367,8 @@ func main() {
 	// 初始化核心
 	diceManager.TryCreateDefault()
 	diceManager.InitDice()
-
-	if opts.JustForTest {
-		diceManager.JustForTest = true
-	}
-
+	initEndTime := time.Now().UnixMicro()
+	fmt.Println(fmt.Sprintf("%s%d%s", "初始化完成，耗时: ", int((initEndTime-initStartTime)/1000), "毫秒"))
 	go func() {
 		// 每5分钟做一次新版本检查
 		for {

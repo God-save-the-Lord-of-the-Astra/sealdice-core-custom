@@ -209,6 +209,7 @@ type Dice struct {
 	ReplyDebugMode          bool                        `yaml:"replyDebugMode"`       // 回复调试
 	PlayerNameWrapEnable    bool                        `yaml:"playerNameWrapEnable"` // 启用玩家名称外框
 	BlackServerList         []BlackServerListWithWeight `yaml:"blackServer"`          // 云黑服务器列表
+	WarningNoticeList       []string                    `yaml:"warningNoticeList"`    // warning播报窗口
 
 	RateLimitEnabled         bool       `yaml:"rateLimitEnabled"`      // 启用频率限制 (刷屏限制)
 	PersonalReplenishRateStr string     `yaml:"personalReplenishRate"` // 个人刷屏警告速率，字符串格式
