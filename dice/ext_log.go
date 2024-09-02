@@ -176,8 +176,9 @@ func RegisterBuiltinExtLog(self *Dice) {
 					ReplyToSenderRaw(ctx, msg, tmpl, "skip")
 				}
 			}
-
-			if cmdArgs.IsArgEqual(1, "on") { //nolint:nestif
+			val := strings.ToLower(cmdArgs.GetArgN(1))
+			switch val {
+			case "on":
 				/*if ctx.IsPrivate {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:提示_私聊不可用"))
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -233,7 +234,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 				}
 
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "off") {
+			case "off":
 				if group.LogCurName != "" && group.LogOn {
 					group.LogOn = false
 					group.UpdatedAtTime = time.Now().Unix()
@@ -245,7 +246,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_关闭_失败"))
 				}
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "del", "rm") {
+			case "del", "rm":
 				name := cmdArgs.GetArgN(2)
 				if name == "" {
 					return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
@@ -263,7 +264,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 					}
 				}
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "masterget") {
+			case "masterget":
 				groupID, requestForAnotherGroup := getSpecifiedGroupIfMaster(ctx, msg, cmdArgs)
 				if requestForAnotherGroup && groupID == "" {
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -277,7 +278,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 
 				getAndUpload(groupID, logName)
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "get") {
+			case "get":
 				logName := group.LogCurName
 				if newName := cmdArgs.GetArgN(2); newName != "" {
 					logName = newName
@@ -291,7 +292,23 @@ func RegisterBuiltinExtLog(self *Dice) {
 
 				getAndUpload(group.GroupID, logName)
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "end") {
+			/*case "rename":
+			if group.LogOn == false {
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_重命名_失败_未开启记录"))
+				return CmdExecuteResult{Matched: true, Solved: true}
+			}
+			newName := cmdArgs.GetArgN(2)
+			if newName == "" {
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_重命名_未指定新名称"))
+				return CmdExecuteResult{Matched: true, Solved: true}
+			} else {
+				VarSetValueStr(ctx, "$t记录名称", group.LogCurName)
+				group.LogCurName = newName
+				VarSetValueStr(ctx, "$t新记录名称", group.LogCurName)
+				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_重命名_成功"))
+			}
+			return CmdExecuteResult{Matched: true, Solved: true}*/
+			case "end":
 				if group.LogCurName == "" {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_关闭_失败"))
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -314,19 +331,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 				group.LogCurName = ""
 				group.UpdatedAtTime = time.Now().Unix()
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "halt") {
-				if len(group.LogCurName) > 0 {
-					lines, _ := model.LogLinesCountGet(ctx.Dice.DBLogs, group.GroupID, group.LogCurName)
-					VarSetValueInt64(ctx, "$t当前记录条数", lines)
-					VarSetValueStr(ctx, "$t记录名称", group.LogCurName)
-				}
-				text := DiceFormatTmpl(ctx, "日志:记录_结束")
-				ReplyToSender(ctx, msg, text)
-				group.LogOn = false
-				group.LogCurName = ""
-				group.UpdatedAtTime = time.Now().Unix()
-				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "list") {
+			case "list":
 				groupID, requestForAnotherGroup := getSpecifiedGroupIfMaster(ctx, msg, cmdArgs)
 				if requestForAnotherGroup && groupID == "" {
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -349,7 +354,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 				}
 				ReplyToSender(ctx, msg, text)
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "new") {
+			case "new":
 				/*if ctx.IsPrivate {
 					ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "核心:提示_私聊不可用"))
 					return CmdExecuteResult{Matched: true, Solved: true}
@@ -382,7 +387,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 
 				ReplyToSender(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_新建"))
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "stat") {
+			case "stat":
 				// group := ctx.Group
 				_, name := getLogName(ctx, msg, cmdArgs, 2)
 				items, err := model.LogGetAllLines(ctx.Dice.DBLogs, group.GroupID, name)
@@ -418,7 +423,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 				}
 				ReplyToSender(ctx, msg, "没有发现可供统计的信息，请确保记录名正确，且有进行骰点/检定行为")
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else if cmdArgs.IsArgEqual(1, "export") {
+			case "export":
 				logName := group.LogCurName
 				if newName := cmdArgs.GetArgN(2); newName != "" {
 					logName = newName
@@ -480,7 +485,7 @@ func RegisterBuiltinExtLog(self *Dice) {
 				VarSetValueStr(ctx, "$t文件名字", logFileNamePrefix)
 				ReplyToSenderRaw(ctx, msg, DiceFormatTmpl(ctx, "日志:记录_导出_成功"), "skip")
 				return CmdExecuteResult{Matched: true, Solved: true}
-			} else {
+			default:
 				return CmdExecuteResult{Matched: true, Solved: true, ShowHelp: true}
 			}
 		},

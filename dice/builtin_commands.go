@@ -167,6 +167,15 @@ func handleCOCTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval st
 	case "rollcriticalsuccess":
 		key = "判定_简短_大成功"
 		defaultText = "大成功"
+	case "rollchecktext":
+		key = "检定_单项结果文本"
+		defaultText = "{$t检定表达式文本}={$tD100}/{$t判定值}{$t检定计算过程} {$t判定结果}"
+	case "rollcheck":
+		key = "检定"
+		defaultText = `{$t原因 ? '由于' + $t原因 + '，'}{$t玩家}的"{$t属性表达式文本}"检定结果为: {$t结果文本}`
+	case "rollcheckmulti", "rollmulticheck":
+		key = "检定_多轮"
+		defaultText = `对{$t玩家}的"{$t属性表达式文本}"进行了{$t次数}次检定，结果为:\n{$t结果文本}`
 	default:
 		return
 	}
@@ -238,6 +247,41 @@ func handleOtherTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval 
 	case "ping":
 		key = "ping响应"
 		defaultText = "pong！这里是{核心:骰子名字}{$t请求结果}"
+	default:
+		return
+	}
+
+	if cmdNum == 1 || subval == "help" || subval == "default" {
+		text := DiceFormatReplyshow(val, ctx, "其它:"+key, defaultText)
+		ReplyToSender(ctx, msg, text)
+		return
+	}
+
+	if subval == "clr" || subval == "del" || subval == "default" {
+		for index := range d.TextMapRaw["其它"][key] {
+			d.TextMapRaw["其它"][key][index][0] = defaultText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已重置词条: %s", val))
+	} else {
+		srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+		srcText = strings.TrimSpace(srcText)
+		for index := range d.TextMapRaw["其它"][key] {
+			d.TextMapRaw["其它"][key][index][0] = srcText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已将词条: %s 设为: %s", val, srcText))
+	}
+}
+
+func handleLogTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval string, cmdArgs *CmdArgs, d *Dice) {
+	cmdNum := len(cmdArgs.Args)
+	var key, defaultText string
+	switch val {
 	case "lognew":
 		key = "记录_新建"
 		defaultText = `新的故事开始了，祝旅途愉快！\n记录已经开启`
@@ -271,6 +315,15 @@ func handleOtherTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval 
 	case "logexportnotcertainlog":
 		key = "记录_取出_未指定记录"
 		defaultText = `命令格式错误：当前没有开启状态的记录，或没有通过参数指定要取出的日志。请参考帮助。`
+	/*case "logrenamesuccess":
+		key = "记录_重命名_成功"
+		defaultText = `当前记录"{$t记录名称}"已重命名为"{$t新记录名称}"`
+	case "logrenamefailnoton":
+		key = "记录_重命名_失败_未开启记录"
+		defaultText = `没有找到正在进行的记录，已经是关闭状态，无法重命名`
+	case "logrenamenonewname":
+		key = "记录_重命名_未指定新名称"
+		defaultText = `命令格式错误：请提供新名称。`*/
 	case "loglistprefix":
 		key = "记录_列出_导入语"
 		defaultText = `正在列出存在于此群的记录:`
@@ -330,14 +383,14 @@ func handleOtherTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval 
 	}
 
 	if cmdNum == 1 || subval == "help" || subval == "default" {
-		text := DiceFormatReplyshow(val, ctx, "其它:"+key, defaultText)
+		text := DiceFormatReplyshow(val, ctx, "日志:"+key, defaultText)
 		ReplyToSender(ctx, msg, text)
 		return
 	}
 
 	if subval == "clr" || subval == "del" || subval == "default" {
-		for index := range d.TextMapRaw["其它"][key] {
-			d.TextMapRaw["其它"][key][index][0] = defaultText
+		for index := range d.TextMapRaw["日志"][key] {
+			d.TextMapRaw["日志"][key][index][0] = defaultText
 		}
 		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
 		d.GenerateTextMap()
@@ -346,8 +399,48 @@ func handleOtherTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval 
 	} else {
 		srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
 		srcText = strings.TrimSpace(srcText)
-		for index := range d.TextMapRaw["其它"][key] {
-			d.TextMapRaw["其它"][key][index][0] = srcText
+		for index := range d.TextMapRaw["日志"][key] {
+			d.TextMapRaw["日志"][key][index][0] = srcText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已将词条: %s 设为: %s", val, srcText))
+	}
+
+}
+func handleGuiMiTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval string, cmdArgs *CmdArgs, d *Dice) {
+	cmdNum := len(cmdArgs.Args)
+	var key, defaultText string
+	switch val {
+	case "guimi", "guimibuild":
+		key = "制卡"
+		defaultText = "{$t玩家}的琉璃版诡秘3.0人物作成:\n{$t制卡结果文本}"
+	case "guimispliter":
+		key = "制卡_分隔符"
+		defaultText = "#{SPLIT}"
+	default:
+		return
+	}
+	if cmdNum == 1 || subval == "help" || subval == "default" {
+		text := DiceFormatReplyshow(val, ctx, "诡秘:"+key, defaultText)
+		ReplyToSender(ctx, msg, text)
+		return
+	}
+
+	if subval == "clr" || subval == "del" || subval == "default" {
+		for index := range d.TextMapRaw["诡秘"][key] {
+			d.TextMapRaw["诡秘"][key][index][0] = defaultText
+		}
+		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
+		d.GenerateTextMap()
+		d.SaveText()
+		ReplyToSender(ctx, msg, fmt.Sprintf("已重置词条: %s", val))
+	} else {
+		srcText := strings.ReplaceAll(cmdArgs.RawArgs, cmdArgs.GetArgN(1), "")
+		srcText = strings.TrimSpace(srcText)
+		for index := range d.TextMapRaw["诡秘"][key] {
+			d.TextMapRaw["诡秘"][key][index][0] = srcText
 		}
 		SetupTextHelpInfo(d, d.TextMapHelpInfo, d.TextMapRaw, "configs/text-template.yaml")
 		d.GenerateTextMap()
@@ -360,10 +453,14 @@ func handleTextMapUpdate(ctx *MsgContext, msg *Message, val string, subval strin
 	switch val {
 	case "selfname", "unknownerror", "boton", "botoff", "replyon", "replyoff", "addgroup", "addfriend", "groupexitannounce", "groupexit", "savesetup", "additionalstatus", "reasonofrollprefix", "rolldiceeqvt", "rolldice", "rollmultidice":
 		handleCoreTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
-	case "setcocrule", "fumble", "failure", "success", "hardsuccess", "extremesuccess", "criticalsuccess", "musthardsuccess", "musthardfailure", "mustextremesuccess", "mustextremefailure", "mustcriticalsuccesssuccess", "mustcriticalsuccessfailure", "rollfumble", "rollfailure", "rollsuccess", "rollhardsuccess", "rollextremesuccess", "rollcriticalsuccess":
+	case "setcocrule", "fumble", "failure", "success", "hardsuccess", "extremesuccess", "criticalsuccess", "musthardsuccess", "musthardfailure", "mustextremesuccess", "mustextremefailure", "mustcriticalsuccesssuccess", "mustcriticalsuccessfailure", "rollfumble", "rollfailure", "rollsuccess", "rollhardsuccess", "rollextremesuccess", "rollcriticalsuccess", "rollchecktext", "rollcheck", "rollcheckmulti", "rollmulticheck":
 		handleCOCTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
-	case "jrrp", "decklist", "drawkey", "nodeck", "deckcitenotfound", "deckcitenotfoundbuthavesimilar", "deckspliter", "deckresultprefix", "randomnamegenerate", "randomnamespliter", "poke", "ping", "lognew", "logon", "logonsuccess", "logonfailnolog", "logonfailnotnew", "logonalready", "logonfailunfinished", "logoff", "logoffsuccess", "logofffail", "logexportnotcertainlog", "loglistprefix", "logend", "logendsuccess", "lognewbutunfinished", "loglengthnotice", "logdelete", "logdeletesuccess", "logdeletefailnotfound", "logdeletefailcontinuing", "obenter", "obexit", "logupload", "loguploadsuccess", "loguploadfail", "logexport", "logexportsuccess", "syncname", "syncnamecancel":
+	case "jrrp", "decklist", "drawkey", "nodeck", "deckcitenotfound", "deckcitenotfoundbuthavesimilar", "deckspliter", "deckresultprefix", "randomnamegenerate", "randomnamespliter", "poke", "ping":
 		handleOtherTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
+	case "lognew", "logon", "logonsuccess", "logonfailnolog", "logonfailnotnew", "logonalready", "logonfailunfinished", "logoff", "logoffsuccess", "logofffail", "logexportnotcertainlog", "loglistprefix", "logend", "logendsuccess", "lognewbutunfinished", "loglengthnotice", "logdelete", "logdeletesuccess", "logdeletefailnotfound", "logdeletefailcontinuing", "obenter", "obexit", "logupload", "loguploadsuccess", "loguploadfail", "logexport", "logexportsuccess", "syncname", "syncnamecancel": //"logrenamesuccess", "logrenamefailnoton", "logrenamenonewname":
+		handleLogTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
+	case "guimi", "guimibuild", "guimispliter":
+		handleGuiMiTextMapUpdate(ctx, msg, val, subval, cmdArgs, d)
 	default:
 		return
 	}
@@ -1442,7 +1539,7 @@ func (d *Dice) registerCoreCommands() {
 				_ = json.Indent(&warningInformationJson, []byte(warningInformation), "", "    ")
 
 				ReplyToSender(ctx, msg, retMes)
-				ReplyToSender(ctx, msg, fmt.Sprintf("%s %s已通知%s不良记录%d:\n!warning%s", time.Now().Format("2006-01-02 15:04:05"), ctx.Player.Name, "骰娘", warningStruct.Wid, warningInformationJson.String()))
+				ReplyToSender(ctx, msg, fmt.Sprintf("%s %s已通知%s不良记录%d:\n!warning%s", time.Now().Format("2006-01-02 15:04:05"), ctx.Player.Name, ctx.EndPoint.Nickname, warningStruct.Wid, warningInformationJson.String()))
 			}
 			return CmdExecuteResult{Matched: true, Solved: true}
 		},

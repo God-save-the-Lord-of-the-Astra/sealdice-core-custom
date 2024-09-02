@@ -431,23 +431,31 @@ func LuaVarInit(LuaVM *lua.LState, d *Dice, ctx *MsgContext, msg *Message, cmdAr
 	// Dream 散装变量兼容
 	DreamMsgGroup_ID := strings.ReplaceAll(msg.GroupID, "QQ-Group:", "")
 	DreamMsgSender_ID := strings.ReplaceAll(msg.Sender.UserID, "QQ:", "")
-	DreamMsgGroup_Nick := ctx.Group.GroupName
+	DreamMsgIsGroup := !ctx.IsPrivate
+	DreamMsgIsAtMe := cmdArgs.AmIBeMentionedFirst
+	DreamMsgFromDiceName := ctx.EndPoint.Nickname
+	DreamMsgfromParas := cmdArgs.RawArgs
+	DreamMsgCommandThis := strings.TrimSpace(strings.ReplaceAll(cmdArgs.RawText, cmdArgs.RawArgs, ""))
+	//DreamMsgGroup_Nick := ctx.Group.GroupName
 	DreamMsgSender_Nick := ctx.Player.Name
 	DreamMsgMessage_Text := cmdArgs.RawText
 	DreamMsgSender_Jrrp, _ := VarGetValueInt64(ctx, "$t人品")
 	DreamMsgTable := LuaVM.NewTable()
-	DreamGroupTable := LuaVM.NewTable()
-	DreamMessageTable := LuaVM.NewTable()
-	DreamSenderTable := LuaVM.NewTable()
-	LuaVM.SetField(DreamGroupTable, "id", lua.LString(DreamMsgGroup_ID))
-	LuaVM.SetField(DreamGroupTable, "nick", lua.LString(DreamMsgGroup_Nick))
-	LuaVM.SetField(DreamMsgTable, "group", DreamGroupTable)
-	LuaVM.SetField(DreamMessageTable, "txt", lua.LString(DreamMsgMessage_Text))
-	LuaVM.SetField(DreamMsgTable, "message", DreamMessageTable)
-	LuaVM.SetField(DreamSenderTable, "id", lua.LString(DreamMsgSender_ID))
-	LuaVM.SetField(DreamSenderTable, "nick", lua.LString(DreamMsgSender_Nick))
-	LuaVM.SetField(DreamSenderTable, "jrrp", lua.LNumber(DreamMsgSender_Jrrp))
-	LuaVM.SetField(DreamMsgTable, "sender", DreamSenderTable)
+	LuaVM.SetField(DreamMsgTable, "fromGroup", lua.LString(DreamMsgGroup_ID))
+	LuaVM.SetField(DreamMsgTable, "fromQQ", lua.LString(DreamMsgSender_ID))
+	LuaVM.SetField(DreamMsgTable, "isGroup", lua.LBool(DreamMsgIsGroup))
+	LuaVM.SetField(DreamMsgTable, "isAtMe", lua.LBool(DreamMsgIsAtMe))
+	LuaVM.SetField(DreamMsgTable, "fromDiceName", lua.LString(DreamMsgFromDiceName))
+	LuaVM.SetField(DreamMsgTable, "fromParas", lua.LString(DreamMsgfromParas))
+	LuaVM.SetField(DreamMsgTable, "commandThis", lua.LString(DreamMsgCommandThis))
+	LuaVM.SetField(DreamMsgTable, "fromNick", lua.LString(DreamMsgSender_Nick))
+	LuaVM.SetField(DreamMsgTable, "fromJrrp", lua.LNumber(DreamMsgSender_Jrrp))
+	LuaVM.SetField(DreamMsgTable, "fromMsg", lua.LString(DreamMsgMessage_Text))
+	DreamMsgParaTable := LuaVM.NewTable()
+	for _, arg := range cmdArgs.Args {
+		DreamMsgParaTable.Append(lua.LString(arg))
+	}
+	LuaVM.SetField(DreamMsgTable, "ParaTable", DreamMsgParaTable)
 	LuaVM.SetGlobal("dreammsg", DreamMsgTable)
 }
 
@@ -1220,6 +1228,7 @@ func LuaFuncInit(LuaVM *lua.LState, ctx *MsgContext, msg *Message, cmdArgs *CmdA
 	LuaVM.SetField(DreamTable, "gsub", LuaVM.NewFunction(luaDreamTableGsub))
 	LuaVM.SetField(DreamTable, "add", LuaVM.NewFunction(luaDreamTableAdd))
 	LuaVM.SetField(DreamTable, "tostring", LuaVM.NewFunction(luaDreamtableToString))
+	LuaVM.SetField(DreamTable, "tostr", LuaVM.NewFunction(luaDreamtableToString))
 	LuaVM.SetField(DreamLib, "base64", DreamBase64)
 	LuaVM.SetField(DreamBase64, "encode", LuaVM.NewFunction(luaDreamBase64Encode))
 	LuaVM.SetField(DreamBase64, "decode", LuaVM.NewFunction(luaDreamBase64Decode))

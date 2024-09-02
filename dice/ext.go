@@ -22,6 +22,7 @@ func (d *Dice) RegisterBuiltinExt() {
 	RegisterBuiltinStory(d)
 	RegisterBuiltinExtExp(d)
 	RegisterExecCodeCommands(d)
+	RegisterGuiMiCommands(d)
 
 	d.RegisterBuiltinSystemTemplate()
 }
